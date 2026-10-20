@@ -6,5 +6,6 @@ class Settings(BaseSettings):
     access_token_minutes: int = 60 * 24
     require_approval: bool = True
     model_config = {"env_file": ".env"}
+    jooble_api_key: str = ""
 
 settings = Settings()
