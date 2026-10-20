@@ -5,6 +5,7 @@ from .database import get_db
 from .models import Job
 from .routes_employer import MyJobOut
 from .security import require_role
+from .ingest import run_all
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_role("admin"))])
 
@@ -27,3 +28,9 @@ def approve(job_id: int, db: Session = Depends(get_db)):
 @router.post("/jobs/{job_id}/reject")
 def reject(job_id: int, db: Session = Depends(get_db)):
     return set_status(job_id, "rejected", db)
+
+
+
+@router.post("/ingest/run")
+def ingest_now(db: Session = Depends(get_db)):
+    return run_all(db)
