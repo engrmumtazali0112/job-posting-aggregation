@@ -1,19 +1,25 @@
-import re, html
+﻿import re, html
 import httpx, feedparser
 from sqlalchemy import select
-from .config import settings
 from sqlalchemy.orm import Session
+from .config import settings
 from .models import Job, JobSource, make_hash
 
 SOURCES = [
     {"name": "Arbeitnow", "type": "api", "endpoint": "https://www.arbeitnow.com/api/job-board-api"},
     {"name": "We Work Remotely", "type": "rss",
      "endpoint": "https://weworkremotely.com/categories/remote-programming-jobs.rss"},
+    {"name": "Jooble", "type": "jooble", "endpoint": "https://jooble.org"},
 ]
 
 TAG = re.compile(r"<[^>]+>")
+REPEAT = re.compile(r"(?i)(job description\s*)+")
+
 def clean(text):
     return html.unescape(TAG.sub(" ", text or "")).strip()
+
+def clean_desc(text):
+    return REPEAT.sub("", clean(text)).strip()
 
 def fetch_api(url):
     r = httpx.get(url, timeout=30, headers={"User-Agent": "JobBoardBot/1.0"})
@@ -23,7 +29,7 @@ def fetch_api(url):
             "title": j.get("title") or "",
             "company": j.get("company_name") or "Unknown",
             "location": j.get("location") or "Remote",
-            "description": clean(j.get("description"))[:5000],
+            "description": clean_desc(j.get("description"))[:5000],
             "apply_url": j.get("url"),
         }
 
@@ -31,15 +37,16 @@ def fetch_rss(url):
     feed = feedparser.parse(url, agent="JobBoardBot/1.0")
     for e in feed.entries:
         title, company = e.get("title", ""), "Unknown"
-        if ": " in title:                      # this feed uses "Company: Job title"
+        if ": " in title:
             company, title = title.split(": ", 1)
         yield {
             "title": title.strip(),
             "company": company.strip(),
             "location": "Remote",
-            "description": clean(e.get("summary"))[:5000],
+            "description": clean_desc(e.get("summary"))[:5000],
             "apply_url": e.get("link"),
         }
+
 JOOBLE_QUERIES = [("", "Pakistan"), ("", "Islamabad"), ("", "Rawalpindi"),
                   ("", "Lahore"), ("", "Karachi"), ("developer", "Pakistan")]
 
@@ -55,11 +62,11 @@ def fetch_jooble(_endpoint):
                 "title": clean(j.get("title")),
                 "company": clean(j.get("company")) or "Unknown",
                 "location": j.get("location") or loc,
-                "description": clean(j.get("snippet"))[:5000],
+                "description": clean_desc(j.get("snippet"))[:5000],
                 "apply_url": j.get("link"),
             }
+
 FETCHERS = {"api": fetch_api, "rss": fetch_rss, "jooble": fetch_jooble}
-SOURCES.append({"name": "Jooble", "type": "jooble", "endpoint": "https://jooble.org"})
 
 def get_source(db: Session, cfg: dict) -> JobSource:
     src = db.scalar(select(JobSource).where(JobSource.name == cfg["name"]))
@@ -70,22 +77,24 @@ def get_source(db: Session, cfg: dict) -> JobSource:
     return src
 
 def save_jobs(db: Session, src: JobSource, items) -> dict:
-    added = skipped = 0
+    items = list(items)                      # fetch first, so no DB connection sits idle
+    existing = set(db.scalars(select(Job.dedupe_hash)))
+    new, skipped = [], 0
     for it in items:
         if not it["title"] or not it["apply_url"]:
             continue
         h = make_hash(it["title"], it["company"], it["location"])
-        if db.scalar(select(Job.id).where(Job.dedupe_hash == h)):
+        if h in existing:
             skipped += 1
             continue
-        db.add(Job(title=it["title"][:255], company_name=it["company"][:200],
-                   location=it["location"][:200], description=it["description"],
-                   apply_url=it["apply_url"][:500], source_type="aggregated",
-                   source_id=src.id, status="published", dedupe_hash=h))
-        db.flush()          # so duplicates inside the same batch are caught too
-        added += 1
+        existing.add(h)                      # also catches duplicates inside this batch
+        new.append(Job(title=it["title"][:255], company_name=it["company"][:200],
+                       location=it["location"][:200], description=it["description"],
+                       apply_url=it["apply_url"][:500], source_type="aggregated",
+                       source_id=src.id, status="published", dedupe_hash=h))
+    db.add_all(new)
     db.commit()
-    return {"added": added, "duplicates": skipped}
+    return {"added": len(new), "duplicates": skipped}
 
 def run_all(db: Session) -> dict:
     report = {}
@@ -95,7 +104,7 @@ def run_all(db: Session) -> dict:
             continue
         try:
             report[cfg["name"]] = save_jobs(db, src, FETCHERS[cfg["type"]](cfg["endpoint"]))
-        except Exception as exc:          # one broken source must not stop the others
+        except Exception as exc:
             db.rollback()
             report[cfg["name"]] = {"error": str(exc)}
     return report
