@@ -1,15 +1,19 @@
-from fastapi import FastAPI, Depends
+﻿from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from .database import Base, engine, get_db
 from .models import Job, make_hash
+from . import routes_auth, routes_employer, routes_admin
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Job Platform API")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"],
                    allow_methods=["*"], allow_headers=["*"])
+app.include_router(routes_auth.router)
+app.include_router(routes_employer.router)
+app.include_router(routes_admin.router)
 
 class JobOut(BaseModel):
     id: int
@@ -42,7 +46,7 @@ def seed(db: Session = Depends(get_db)):
         ("Python Developer", "Acme Tech", "Islamabad", "aggregated"),
         ("React Frontend Engineer", "Nova Labs", "Remote", "aggregated"),
         ("Marketing Manager", "Bright Co", "Rawalpindi", "employer"),
-        ("Python Developer", "Acme Tech", "Islamabad", "employer"),  # duplicate, skipped
+        ("Python Developer", "Acme Tech", "Islamabad", "employer"),
     ]
     added = 0
     for title, company, loc, src in samples:
