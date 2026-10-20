@@ -1,6 +1,7 @@
 import re, html
 import httpx, feedparser
 from sqlalchemy import select
+from .config import settings
 from sqlalchemy.orm import Session
 from .models import Job, JobSource, make_hash
 
@@ -39,8 +40,26 @@ def fetch_rss(url):
             "description": clean(e.get("summary"))[:5000],
             "apply_url": e.get("link"),
         }
+JOOBLE_QUERIES = [("", "Pakistan"), ("", "Islamabad"), ("", "Rawalpindi"),
+                  ("", "Lahore"), ("", "Karachi"), ("developer", "Pakistan")]
 
-FETCHERS = {"api": fetch_api, "rss": fetch_rss}
+def fetch_jooble(_endpoint):
+    if not settings.jooble_api_key:
+        raise RuntimeError("JOOBLE_API_KEY is not set in .env")
+    for kw, loc in JOOBLE_QUERIES:
+        r = httpx.post(f"https://jooble.org/api/{settings.jooble_api_key}",
+                       json={"keywords": kw, "location": loc, "page": 1}, timeout=30)
+        r.raise_for_status()
+        for j in r.json().get("jobs", []):
+            yield {
+                "title": clean(j.get("title")),
+                "company": clean(j.get("company")) or "Unknown",
+                "location": j.get("location") or loc,
+                "description": clean(j.get("snippet"))[:5000],
+                "apply_url": j.get("link"),
+            }
+FETCHERS = {"api": fetch_api, "rss": fetch_rss, "jooble": fetch_jooble}
+SOURCES.append({"name": "Jooble", "type": "jooble", "endpoint": "https://jooble.org"})
 
 def get_source(db: Session, cfg: dict) -> JobSource:
     src = db.scalar(select(JobSource).where(JobSource.name == cfg["name"]))
