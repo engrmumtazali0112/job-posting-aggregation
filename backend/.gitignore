@@ -1,0 +1,4 @@
+venv/
+jobs.db
+.env
+__pycache__/
