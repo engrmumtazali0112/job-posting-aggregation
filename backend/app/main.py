@@ -1,68 +1,21 @@
-﻿from fastapi import FastAPI, Depends
-from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select, or_
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
-from .database import Base, engine, get_db
-from .models import Job, make_hash
-from . import routes_auth, routes_employer, routes_admin, scheduler
-from contextlib import asynccontextmanager
-
-@asynccontextmanager
-async def lifespan(app):
-    sched = scheduler.start()
-    yield
-    sched.shutdown(wait=False)
-
-Base.metadata.create_all(bind=engine)
-app = FastAPI(title="Job Platform API", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"],
-                   allow_methods=["*"], allow_headers=["*"])
-app.include_router(routes_auth.router)
-app.include_router(routes_employer.router)
-app.include_router(routes_admin.router)
-
-class JobOut(BaseModel):
-    id: int
-    title: str
-    company_name: str
-    location: str
-    description: str
-    apply_url: str | None
-    source_type: str
-    model_config = {"from_attributes": True}
-
-@app.get("/api/health")
-def health():
-    return {"status": "ok"}
+﻿from fastapi import HTTPException
 
 @app.get("/api/jobs", response_model=list[JobOut])
-def list_jobs(q: str = "", source: str = "", db: Session = Depends(get_db)):
+def list_jobs(q: str = "", location: str = "", source: str = "",
+              limit: int = 12, offset: int = 0, db: Session = Depends(get_db)):
     stmt = select(Job).where(Job.status == "published").order_by(Job.created_at.desc())
     if q:
         like = f"%{q}%"
-        stmt = stmt.where(or_(Job.title.ilike(like), Job.company_name.ilike(like), Job.location.ilike(like)))
+        stmt = stmt.where(or_(Job.title.ilike(like), Job.company_name.ilike(like), Job.description.ilike(like)))
+    if location:
+        stmt = stmt.where(Job.location.ilike(f"%{location}%"))
     if source in ("aggregated", "employer"):
         stmt = stmt.where(Job.source_type == source)
-    return db.scalars(stmt).all()
+    return db.scalars(stmt.limit(min(limit, 50)).offset(offset)).all()
 
-@app.post("/api/dev/seed")
-def seed(db: Session = Depends(get_db)):
-    """Temporary: adds sample jobs and proves deduplication works."""
-    samples = [
-        ("Python Developer", "Acme Tech", "Islamabad", "aggregated"),
-        ("React Frontend Engineer", "Nova Labs", "Remote", "aggregated"),
-        ("Marketing Manager", "Bright Co", "Rawalpindi", "employer"),
-        ("Python Developer", "Acme Tech", "Islamabad", "employer"),
-    ]
-    added = 0
-    for title, company, loc, src in samples:
-        h = make_hash(title, company, loc)
-        if db.scalar(select(Job).where(Job.dedupe_hash == h)):
-            continue
-        db.add(Job(title=title, company_name=company, location=loc, source_type=src,
-                   description=f"Sample {title} role at {company}.", dedupe_hash=h))
-        added += 1
-    db.commit()
-    return {"added": added}
-
+@app.get("/api/jobs/{job_id}", response_model=JobOut)
+def get_job(job_id: int, db: Session = Depends(get_db)):
+    job = db.get(Job, job_id)
+    if not job or job.status != "published":
+        raise HTTPException(404, "Job not found")
+    return job
