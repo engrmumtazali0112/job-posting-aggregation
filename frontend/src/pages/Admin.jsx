@@ -1,4 +1,4 @@
-ï»¿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import PanelLayout from '../components/PanelLayout.jsx'
 import JobForm, { toForm } from '../components/JobForm.jsx'
@@ -20,7 +20,7 @@ export function Dashboard() {
   return (
     <>
       <h1 className="page-title">Admin dashboard</h1>
-      {s.jobs.pending > 0 && <div className="alert warn">{s.jobs.pending} job(s) waiting for approval. <Link className="link" to="/admin/jobs">Review now â†’</Link></div>}
+      {s.jobs.pending > 0 && <div className="alert warn">{s.jobs.pending} job(s) waiting for approval. <Link className="link" to="/admin/jobs">Review now ?</Link></div>}
       <h3 className="sub-h">Users</h3>
       <div className="stats">
         <Stat label="Total users" value={s.users.total} /><Stat label="Employers" value={s.users.employers} />
@@ -85,7 +85,7 @@ export function Jobs() {
             <input type="checkbox" checked={sel.includes(j.id)} onChange={() => toggle(j.id)} />
             <div className="grow">
               <strong>{j.title}</strong>
-              <div className="muted">{j.company_name} {j.location ? 'Â· ' + j.location : ''} Â· {timeAgo(j.created_at)} Â· <span className={'tag ' + (j.source_type === 'employer' ? 'tag-emp' : 'tag-agg')}>{j.source_type}</span></div>
+              <div className="muted">{j.company_name} {j.location ? '· ' + j.location : ''} · {timeAgo(j.created_at)} · <span className={'tag ' + (j.source_type === 'employer' ? 'tag-emp' : 'tag-agg')}>{j.source_type}</span></div>
             </div>
             <Badge s={j.status} />
             <div className="acts wrap-acts">
@@ -109,7 +109,7 @@ export function EditJob() {
   return (
     <>
       <h1 className="page-title">Edit job #{job.id}</h1>
-      <p className="muted" style={{ marginBottom: 14 }}>{job.company_name} Â· status: {job.status}</p>
+      <p className="muted" style={{ marginBottom: 14 }}>{job.company_name} · status: {job.status}</p>
       <JobForm initial={toForm(job)} submitLabel="Save changes"
         onSubmit={async (p) => { await api('/admin/jobs/' + id, { method: 'PUT', body: p }); nav('/admin/jobs') }} />
     </>
@@ -138,7 +138,7 @@ export function Users() {
           <div className="card row" key={u.id}>
             <div className="grow">
               <strong>{u.full_name || u.email}</strong>
-              <div className="muted">{u.full_name ? u.email + ' Â· ' : ''}{u.role.replace('_', ' ')}{u.company_name ? ' Â· ' + u.company_name : ''} Â· joined {timeAgo(u.created_at)}</div>
+              <div className="muted">{u.full_name ? u.email + ' · ' : ''}{u.role.replace('_', ' ')}{u.company_name ? ' · ' + u.company_name : ''} · joined {timeAgo(u.created_at)}</div>
             </div>
             {!u.is_active && <span className="status s-rejected">deactivated</span>}
             {u.is_verified && <span className="status s-published">verified</span>}
@@ -171,7 +171,7 @@ export function Companies() {
           <div className="card row" key={c.id}>
             <div className="grow">
               <strong>{c.name}</strong>
-              <div className="muted">{c.owner_email}{c.website ? ' Â· ' + c.website : ''} Â· {c.jobs_count} job(s)</div>
+              <div className="muted">{c.owner_email}{c.website ? ' · ' + c.website : ''} · {c.jobs_count} job(s)</div>
             </div>
             <span className={'status ' + (c.domain_verified ? 's-published' : 's-pending')}>{c.domain_verified ? 'verified' : 'unverified'}</span>
             <button className="btn btn-outline sm" onClick={() => verify(c)}>{c.domain_verified ? 'Unverify' : 'Verify'}</button>
@@ -191,13 +191,13 @@ export function Settings() {
   const setAp = async (v) => { try { await api('/admin/settings', { method: 'PUT', body: { require_approval: v } }); setApproval(v) } catch (e) { setNote(e.message) } }
   const toggleSrc = async (s) => { try { await api('/admin/sources/' + s.id, { method: 'PATCH', body: { active: !s.active } }); load() } catch (e) { setNote(e.message) } }
   const ingest = async () => {
-    setNote('Fetchingâ€¦')
+    setNote('Fetching…')
     try { setNote('Done: ' + JSON.stringify(await api('/admin/ingest/run', { method: 'POST' }))); load() } catch (e) { setNote(e.message) }
   }
   return (
     <>
       <h1 className="page-title">Sources & settings</h1>
-      {note && <div className={note.startsWith('Done') || note === 'Fetchingâ€¦' ? 'alert ok' : 'alert'}>{note}</div>}
+      {note && <div className={note.startsWith('Done') || note === 'Fetching…' ? 'alert ok' : 'alert'}>{note}</div>}
       <div className="card row">
         <div className="grow"><strong>Require admin approval for employer jobs</strong>
           <div className="muted">When off, employer jobs go live immediately.</div></div>
@@ -206,7 +206,7 @@ export function Settings() {
       <div className="sec-head" style={{ marginTop: 28 }}><h3>Job sources</h3><button className="btn btn-outline sm" onClick={ingest}>Run aggregation now</button></div>
       {sources.map((s) => (
         <div className="card row" key={s.id}>
-          <div className="grow"><strong>{s.name}</strong><div className="muted">{s.type} Â· {s.jobs_count} job(s)</div></div>
+          <div className="grow"><strong>{s.name}</strong><div className="muted">{s.type} · {s.jobs_count} job(s)</div></div>
           <button className={'btn sm ' + (s.active ? 'btn-primary' : 'btn-outline')} onClick={() => toggleSrc(s)}>{s.active ? 'Active' : 'Off'}</button>
         </div>))}
     </>

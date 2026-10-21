@@ -1,4 +1,4 @@
-﻿import { Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { timeAgo, payText, JOB_TYPES } from '../api'
 
 const COLORS = ['#5b3cc4', '#0f9d8a', '#e0712c', '#d6336c', '#2f7de1', '#7a8b1f']
@@ -23,7 +23,7 @@ export default function JobCard({ job }) {
               <Link 
                 to={`/companies/${job.company_id}`} 
                 style={{ color: 'var(--p)', fontWeight: '600' }} 
-                onClick={(e) => e.stopPropagation()} // Prevents the main job card link from triggering
+                onClick={(e) => e.stopPropagation()}
               >
                 {job.company_name}
               </Link>
@@ -33,12 +33,15 @@ export default function JobCard({ job }) {
           </p>
         </div>
       </div>
+      
+      {/* FIXED ICONS HERE */}
       <div className="meta">
-        <span>📍 {job.location || 'Not specified'}</span>
-        <span>🕒 {timeAgo(job.created_at)}</span>
-        {job.job_type && emp && <span>💼 {JOB_TYPES[job.job_type] || job.job_type}</span>}
-        {pay && <span>💰 {pay}</span>}
+        <span>Location: {job.location || 'Not specified'}</span>
+        <span>Posted: {timeAgo(job.created_at)}</span>
+        {job.job_type && emp && <span>Type: {JOB_TYPES[job.job_type] || job.job_type}</span>}
+        {pay && <span>Pay: {pay}</span>}
       </div>
+      
       <div className="job-foot">
         <span className={'tag ' + (emp ? 'tag-emp' : 'tag-agg')}>{emp ? 'Employer' : 'Aggregated'}</span>
         <span className="view">View job →</span>
