@@ -3,6 +3,7 @@ import { useAuth } from './auth.jsx'
 import Home from './pages/Home.jsx'
 import Jobs from './pages/Jobs.jsx'
 import JobDetail from './pages/JobDetail.jsx'
+import Company from './pages/Company.jsx'
 import { Login, Register } from './pages/Auth.jsx'
 import * as E from './pages/Employer.jsx'
 import * as A from './pages/Admin.jsx'
@@ -74,6 +75,7 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
+          <Route path="/companies/:id" element={<Company />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
