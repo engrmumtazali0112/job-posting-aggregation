@@ -90,7 +90,7 @@ def save_jobs(db: Session, src: JobSource, items) -> dict:
         existing.add(h)                      # also catches duplicates inside this batch
         new.append(Job(title=it["title"][:255], company_name=it["company"][:200],
                        location=it["location"][:200], description=it["description"],
-                       apply_url=it["apply_url"][:500], source_type="aggregated",
+                       apply_url=it["apply_url"][:500], source_type="aggregated", workplace_type=("remote" if it["location"].lower().startswith("remote") else "in_person"),
                        source_id=src.id, status="published", dedupe_hash=h))
     db.add_all(new)
     db.commit()

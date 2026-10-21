@@ -1,4 +1,4 @@
-from typing import Literal
+﻿from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr, Field
@@ -14,6 +14,7 @@ class RegisterIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=72)
     role: Literal["job_seeker", "employer"] = "job_seeker"
+    full_name: str | None = Field(default=None, max_length=150)
     company_name: str | None = None
     website: str | None = None
 
@@ -23,7 +24,8 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
         raise HTTPException(409, "Email already registered")
     if data.role == "employer" and not data.company_name:
         raise HTTPException(422, "company_name is required for employers")
-    user = User(email=data.email.lower(), password_hash=hash_password(data.password), role=data.role)
+    user = User(email=data.email.lower(), password_hash=hash_password(data.password),
+                role=data.role, full_name=data.full_name)
     db.add(user)
     db.flush()
     if data.role == "employer":
@@ -36,8 +38,12 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
     user = db.scalar(select(User).where(User.email == form.username.lower()))
     if not user or not verify_password(form.password, user.password_hash):
         raise HTTPException(401, "Wrong email or password")
+    if user.is_active is False:
+        raise HTTPException(403, "This account has been deactivated")
     return {"access_token": create_token(user.id), "token_type": "bearer", "role": user.role}
 
 @router.get("/me")
-def me(user: User = Depends(current_user)):
-    return {"id": user.id, "email": user.email, "role": user.role}
+def me(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    company = db.scalar(select(Company).where(Company.user_id == user.id))
+    return {"id": user.id, "email": user.email, "role": user.role, "full_name": user.full_name,
+            "is_verified": user.is_verified, "company_name": company.name if company else None}

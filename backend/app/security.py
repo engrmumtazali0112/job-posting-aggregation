@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+﻿from datetime import datetime, timedelta, timezone
 import bcrypt, jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
@@ -27,6 +27,8 @@ def current_user(token: str = Depends(oauth2), db: Session = Depends(get_db)) ->
     user = db.get(User, int(data["sub"]))
     if not user:
         raise HTTPException(401, "User not found")
+    if user.is_active is False:
+        raise HTTPException(403, "This account has been deactivated")
     return user
 
 def require_role(*roles: str):
