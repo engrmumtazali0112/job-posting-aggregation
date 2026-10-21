@@ -1,70 +1,65 @@
-﻿import { Link, NavLink, Route, Routes, Navigate } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, NavLink, Outlet, Route, Routes, Navigate, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useAuth } from './auth.jsx'
+import Icon from './components/Icon.jsx'
+import { useOutside } from './components/ui.jsx'
 import Home from './pages/Home.jsx'
 import Jobs from './pages/Jobs.jsx'
 import JobDetail from './pages/JobDetail.jsx'
 import Company from './pages/Company.jsx'
 import CompanySearch from './pages/CompanySearch.jsx'
 import { Login, Register } from './pages/Auth.jsx'
+import { Notifications, Messages } from './pages/Inbox.jsx'
 import * as E from './pages/Employer.jsx'
 import * as A from './pages/Admin.jsx'
 import * as S from './pages/Seeker.jsx'
-import { useState } from 'react'
+
+const MENU = {
+  job_seeker: [['/my/profile', 'doc', 'Profile'], ['/my', 'briefcase', 'My jobs'], ['/companies', 'star', 'Company reviews']],
+  employer: [['/employer/dashboard', 'dash', 'Dashboard'], ['/employer/dashboard/post', 'pencil', 'Post a job'], ['/employer/dashboard/company', 'building', 'Company profile']],
+  admin: [['/admin', 'dash', 'Admin dashboard'], ['/admin/jobs', 'briefcase', 'Review jobs']],
+}
 
 function Navbar() {
-  const { user, logout } = useAuth()
+  const { user, logout, counts } = useAuth()
+  const [open, setOpen] = useState(false)
+  const { pathname } = useLocation()
+  const ref = useOutside(open, () => setOpen(false))
+  useEffect(() => setOpen(false), [pathname])
   const role = user?.role
-  const [showMenu, setShowMenu] = useState(false)
+  const cnt = (n) => (n > 0 ? <span className="badge">{n > 9 ? '9+' : n}</span> : null)
 
   return (
-    <header style={{ background: '#fff', borderBottom: '1px solid var(--line)' }}>
-      <div className="wrap nav-in" style={{ height: '70px' }}>
-        <Link to="/" className="logo" style={{ color: '#2557a7', fontSize: '28px', fontWeight: '900', letterSpacing: '-1px', display: 'flex', alignItems: 'center' }}>
-          JobBoard
-        </Link>
-        
-        <nav className="links" style={{ marginLeft: '30px' }}>
-          <NavLink to="/" style={({isActive}) => ({ color: isActive ? 'var(--p)' : 'var(--mut)', borderBottom: isActive ? '2px solid var(--p)' : 'none', height: '70px', display: 'flex', alignItems: 'center', padding: '0 10px' })}>Home</NavLink>
-          <NavLink to="/companies" style={({isActive}) => ({ color: isActive ? 'var(--p)' : 'var(--mut)', borderBottom: isActive ? '2px solid var(--p)' : 'none', height: '70px', display: 'flex', alignItems: 'center', padding: '0 10px' })}>Company reviews</NavLink>
-        </nav>
-
-        <div className="nav-right" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
-          {user ? (
-            <>
-              <Link to="/my/saved" className="nav-icon" title="Saved Jobs">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
-              </Link>
-              <Link to="/my/applications" className="nav-icon" title="My Jobs">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
-              </Link>
-              <Link to="/my/profile" className="nav-icon" title="Profile">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-              </Link>
-              
-              <div style={{ position: 'relative', marginLeft: '15px' }}>
-                <button onClick={() => setShowMenu(!showMenu)} className="btn btn-outline sm" style={{ padding: '5px 10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  Menu <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
-                </button>
-                {showMenu && (
-                  <div style={{ position: 'absolute', top: '40px', right: 0, background: '#fff', border: '1px solid var(--line)', borderRadius: '8px', width: '250px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100 }}>
-                    <div style={{ padding: '15px', borderBottom: '1px solid var(--line)', fontSize: '13px', color: 'var(--mut)' }}>{user.email}</div>
-                    <Link to="/my/profile" style={{ display: 'block', padding: '10px 15px', color: 'var(--ink)', borderBottom: '1px solid #f0f0f0' }}>Profile</Link>
-                    <Link to="/my/applications" style={{ display: 'block', padding: '10px 15px', color: 'var(--ink)', borderBottom: '1px solid #f0f0f0' }}>My Jobs</Link>
-                    <button onClick={logout} style={{ display: 'block', padding: '10px 15px', width: '100%', textAlign: 'left', color: 'var(--p)', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Sign out</button>
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <div style={{ display: 'flex', gap: '15px' }}>
-              <Link to="/login" className="btn btn-ghost sm">Sign in</Link>
-              <Link to="/register" className="btn btn-outline sm">Register</Link>
+    <header className="nav2">
+      <div className="wrap nav2-in">
+        <Link to="/" className="brand">JobBoard</Link>
+        <NavLink to="/" end className="tl">Home</NavLink>
+        <NavLink to="/companies" className="tl">Company reviews</NavLink>
+        <div className="nav-spacer" />
+        {user ? (
+          <>
+            {role === 'job_seeker' && <Link to="/my?tab=saved" className="ibtn" title="Saved jobs"><Icon name="bookmark" fill /></Link>}
+            {role !== 'admin' && <NavLink to="/messages" className="ibtn" title="Messages"><Icon name="chat" fill />{cnt(counts.messages)}</NavLink>}
+            {role !== 'admin' && <NavLink to="/notifications" className="ibtn" title="Notifications"><Icon name="bell" fill />{cnt(counts.notifications)}</NavLink>}
+            <div className="menu-wrap" ref={ref}>
+              <button className={'ibtn' + (open ? ' active' : '')} onClick={() => setOpen(!open)} title="Account" aria-haspopup="menu" aria-expanded={open}><Icon name="user" fill /></button>
+              {open && (
+                <div className="menu" role="menu">
+                  <div className="menu-email">{user.email}</div>
+                  {(MENU[role] || []).map(([to, ic, label]) => <Link key={to} to={to}><Icon name={ic} fill size={18} />{label}</Link>)}
+                  <button className="menu-out" onClick={logout}>Sign out</button>
+                </div>
+              )}
             </div>
-          )}
-          
-          <div style={{ width: '1px', height: '30px', background: 'var(--line)', margin: '0 20px' }}></div>
-          <Link to="/employer" style={{ color: 'var(--ink)', fontWeight: '600', fontSize: '14px' }}>Employers / Post Job</Link>
-        </div>
+          </>
+        ) : (
+          <div className="nav-btns">
+            <Link to="/login" className="btn btn-ghost sm">Sign in</Link>
+            <Link to="/register" className="btn btn-outline sm">Register</Link>
+          </div>
+        )}
+        {role !== 'employer' && role !== 'admin' && <><div className="nav-sep" /><Link to="/employer" className="post">Employers / Post Job</Link></>}
       </div>
     </header>
   )
@@ -72,23 +67,14 @@ function Navbar() {
 
 function Footer() {
   return (
-    <footer style={{ background: '#faf9f8', borderTop: '1px solid var(--line)', padding: '40px 0', marginTop: 'auto' }}>
-      <div className="wrap" style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', color: 'var(--mut)' }}>
-        <div>
-          <div style={{ fontSize: '24px', fontWeight: '900', color: 'var(--p)', marginBottom: '10px' }}>JobBoard</div>
-          <p>© {new Date().getFullYear()} JobBoard. All rights reserved.</p>
+    <footer className="sitefoot">
+      <div className="wrap">
+        <div className="sitefoot-in">
+          <div className="col"><div className="brand" style={{ margin: 0 }}>JobBoard</div><span>Jobs from top sources and verified employers.</span></div>
+          <div className="col"><strong>Explore</strong><Link to="/jobs">Find jobs</Link><Link to="/companies">Company reviews</Link></div>
+          <div className="col"><strong>Employers</strong><Link to="/employer">Post a job</Link><Link to="/register?role=employer">Create employer account</Link></div>
         </div>
-        <div style={{ display: 'flex', gap: '40px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <strong style={{ color: 'var(--ink)' }}>Explore</strong>
-            <Link to="/jobs">Find jobs</Link>
-            <Link to="/companies">Company reviews</Link>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <strong style={{ color: 'var(--ink)' }}>Employers</strong>
-            <Link to="/employer">Post a job</Link>
-          </div>
-        </div>
+        <div className="copy2">© {new Date().getFullYear()} JobBoard. All rights reserved.</div>
       </div>
     </footer>
   )
@@ -102,26 +88,24 @@ export function Protected({ role, children }) {
   return children
 }
 
+function ScrollTop() { const { pathname } = useLocation(); useEffect(() => window.scrollTo(0, 0), [pathname]); return null }
+
 export default function App() {
   return (
     <>
+      <ScrollTop />
       <Navbar />
       <main>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/jobs/:id" element={<JobDetail />} />
-          
           <Route path="/companies" element={<CompanySearch />} />
           <Route path="/companies/:id" element={<Company />} />
-          
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
-          {/* Public Employer Landing Page */}
           <Route path="/employer" element={<E.LandingPage />} />
-
-          {/* Protected Employer Dashboard */}
           <Route path="/employer/dashboard" element={<Protected role="employer"><E.Layout /></Protected>}>
             <Route index element={<E.Dashboard />} />
             <Route path="post" element={<E.PostJob />} />
@@ -141,12 +125,14 @@ export default function App() {
           </Route>
 
           <Route path="/my" element={<Protected role="job_seeker"><S.Layout /></Protected>}>
-            <Route index element={<Navigate to="applications" replace />} />
-            <Route path="applications" element={<S.Applications />} />
-            <Route path="saved" element={<S.Saved />} />
+            <Route index element={<S.MyJobs />} />
+            <Route path="applications" element={<Navigate to="/my?tab=applied" replace />} />
+            <Route path="saved" element={<Navigate to="/my?tab=saved" replace />} />
             <Route path="profile" element={<S.Profile />} />
           </Route>
 
+          <Route path="/notifications" element={<Protected><Notifications /></Protected>} />
+          <Route path="/messages" element={<Protected><Messages /></Protected>} />
           <Route path="*" element={<div className="wrap pad"><div className="card empty">Page not found.</div></div>} />
         </Routes>
       </main>

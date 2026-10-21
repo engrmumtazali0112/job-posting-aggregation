@@ -94,27 +94,27 @@ export default function JobForm({ initial = emptyJob, submitLabel = 'Submit job'
 
         {step === 3 && (
           <label>Job description * (min 20 characters)
-            <textarea rows={12} value={f.description} onChange={set('description')} placeholder="Responsibilities, requirements, benefitsÖ" /></label>
+            <textarea rows={12} value={f.description} onChange={set('description')} placeholder="Responsibilities, requirements, benefitsÔøΩ" /></label>
         )}
 
         {step === 4 && (
           <dl className="review">
             <dt>Job title</dt><dd>{f.title}</dd>
-            <dt>Location</dt><dd>{WORKPLACES[f.workplace_type]}{f.location ? ' ∑ ' + f.location : ''}</dd>
+            <dt>Location</dt><dd>{WORKPLACES[f.workplace_type]}{f.location ? ' ÔøΩ ' + f.location : ''}</dd>
             <dt>Job type</dt><dd>{JOB_TYPES[f.job_type]}</dd>
             <dt>Openings</dt><dd>{f.openings}</dd>
-            <dt>Timeline</dt><dd>{f.hiring_timeline || 'ó'}</dd>
+            <dt>Timeline</dt><dd>{f.hiring_timeline || 'ÔøΩ'}</dd>
             <dt>Pay</dt><dd>{payText({ salary_min: num(f.salary_min), salary_max: num(f.salary_max), salary_period: f.salary_period, currency: 'PKR' }) || 'Not shown'}</dd>
-            <dt>Apply link</dt><dd>{f.apply_url || 'ó'}</dd>
+            <dt>Apply link</dt><dd>{f.apply_url || 'ÔøΩ'}</dd>
             <dt>Description</dt><dd className="desc">{f.description}</dd>
           </dl>
         )}
 
         {err && <div className="alert">{err}</div>}
         <div className="form-nav">
-          {step > 0 ? <button type="button" className="btn btn-outline" onClick={() => { setErr(''); setStep(step - 1) }}>? Back</button> : <span />}
-          {step < 4 ? <button type="button" className="btn btn-primary" onClick={next}>Continue ?</button>
-            : <button type="button" className="btn btn-primary" disabled={busy} onClick={submit}>{busy ? 'SavingÖ' : submitLabel}</button>}
+          {step > 0 ? <button type="button" className="btn btn-outline" onClick={() => { setErr(''); setStep(step - 1) }}>‚Üê Back</button> : <span />}
+          {step < 4 ? <button type="button" className="btn btn-primary" onClick={next}>Continue ‚Üí</button>
+            : <button type="button" className="btn btn-primary" disabled={busy} onClick={submit}>{busy ? 'SavingÔøΩ' : submitLabel}</button>}
         </div>
       </div>
     </div>

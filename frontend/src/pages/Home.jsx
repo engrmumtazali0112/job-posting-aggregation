@@ -1,60 +1,64 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api'
-import JobCard from '../components/JobCard.jsx'
+import { useAuth } from '../auth.jsx'
+import JobSplit from '../components/JobSplit.jsx'
+import SearchPill from '../components/SearchPill.jsx'
+import Icon from '../components/Icon.jsx'
 
 const POPULAR = ['IT jobs', 'Remote', 'Islamabad', 'Rawalpindi', 'Lahore', 'Karachi', 'Marketing', 'Engineer']
+const short = (n) => (n >= 1000 ? Math.round(n / 1000) + 'K' : n)
 
 export default function Home() {
-  const nav = useNavigate()
-  const [q, setQ] = useState('')
-  const [loc, setLoc] = useState('')
-  const [jobs, setJobs] = useState(null)
-  useEffect(() => { api('/jobs?limit=9').then(setJobs).catch(() => setJobs([])) }, [])
+  const nav = useNavigate(); const { user } = useAuth()
+  const [q, setQ] = useState(''); const [loc, setLoc] = useState('')
+  const [jobs, setJobs] = useState(null); const [profile, setProfile] = useState(null)
+  const seeker = user?.role === 'job_seeker'
+
+  useEffect(() => {
+    if (!seeker) { setProfile(null); return }
+    api('/seeker/profile').then(setProfile).catch(() => setProfile(null))
+  }, [seeker])
+
+  const hint = seeker && profile?.job_titles?.[0] ? profile.job_titles[0] : ''
+  useEffect(() => {
+    setJobs(null)
+    const run = (query) => api('/jobs?limit=12' + (query ? '&q=' + encodeURIComponent(query) : ''))
+    run(hint).then((r) => (r.length || !hint ? r : run(''))).then(setJobs).catch(() => setJobs([]))
+  }, [hint])
+
   const go = (e) => { e.preventDefault(); nav(`/jobs?q=${encodeURIComponent(q)}&location=${encodeURIComponent(loc)}`) }
+  const name = user?.full_name?.split(' ')[0] || user?.email?.split('@')[0]
+
   return (
-    <>
-      <section className="hero">
-        <div className="blob b1" /><div className="blob b2" />
-        <div className="wrap hero-in">
-          <span className="pill">● New jobs added every 30 minutes</span>
-          <h1>Land your <em>dream job</em><br />today</h1>
-          <p className="sub">Jobs from top sources and verified employers, all in one searchable place.</p>
-          <form className="searchbar" onSubmit={go}>
-            <input placeholder="Job title, skill, or company" value={q} onChange={(e) => setQ(e.target.value)} />
-            <input placeholder="City or Remote" value={loc} onChange={(e) => setLoc(e.target.value)} />
-            <button className="btn btn-primary">Search</button>
-          </form>
-          <div className="chips"><span>Popular:</span>
-            {POPULAR.map((p) => <Link key={p} className="chip" to={`/jobs?q=${encodeURIComponent(p)}`}>{p}</Link>)}
+    <div className="wrap">
+      <div className="page-top"><SearchPill q={q} loc={loc} setQ={setQ} setLoc={setLoc} onSubmit={go} /></div>
+
+      {user ? (
+        <>
+          <h1 className="welcome">Welcome, {name}</h1>
+          {profile?.min_pay ? <div className="paychip"><Icon name="cash" size={18} />Rs {short(profile.min_pay)} / {profile.min_pay_period === 'month' ? 'mo' : profile.min_pay_period}</div> : null}
+        </>
+      ) : (
+        <div style={{ textAlign: 'center', marginTop: 34 }}>
+          <h1 style={{ fontSize: 'clamp(32px,5vw,52px)', letterSpacing: -1.2, lineHeight: 1.1 }}>Find your <em style={{ fontStyle: 'normal', color: 'var(--p)' }}>next job</em></h1>
+          <p className="muted" style={{ fontSize: 18, margin: '10px 0 16px' }}>Jobs from top sources and verified employers, refreshed every 30 minutes.</p>
+          <div className="chips"><span>Popular:</span>{POPULAR.map((p) => <Link key={p} className="chip" to={`/jobs?q=${encodeURIComponent(p)}`}>{p}</Link>)}</div>
+        </div>
+      )}
+
+      <h2 className="h-title">{hint ? 'Jobs for you' : 'Latest jobs'}</h2>
+      <JobSplit jobs={jobs || []} loading={jobs === null} empty="No jobs yet. Jobs appear here once they are fetched or approved." />
+      <div className="center"><Link to="/jobs" className="btn btn-outline">Browse all jobs</Link></div>
+
+      {!user && (
+        <section className="section">
+          <div className="cta">
+            <div><h2>Hiring? Post a job in minutes</h2><p>Reach thousands of job seekers and get your opening shared on our social channels.</p></div>
+            <Link to="/register?role=employer" className="btn btn-light">Start hiring</Link>
           </div>
-        </div>
-      </section>
-
-      <section className="wrap features">
-        {[['🔎', 'One unified feed', 'Aggregated and employer jobs together, clearly tagged.'],
-          ['✅', 'Verified employers', 'Every employer job is reviewed before it goes live.'],
-          ['⚡', 'Always fresh', 'New jobs are fetched automatically all day.']].map(([i, t, d]) => (
-          <div className="card feat" key={t}><div className="ico">{i}</div><h3>{t}</h3><p>{d}</p></div>
-        ))}
-      </section>
-
-      <section className="wrap section">
-        <div className="sec-head">
-          <div><span className="pill pill-soft">FRESH TODAY</span><h2>Latest jobs</h2></div>
-          <Link to="/jobs" className="link">View all jobs →</Link>
-        </div>
-        {jobs === null ? <div className="grid">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="card skel" />)}</div>
-          : jobs.length === 0 ? <div className="card empty">No jobs yet. Jobs appear here once they are fetched or approved.</div>
-          : <div className="grid">{jobs.map((j) => <JobCard key={j.id} job={j} />)}</div>}
-      </section>
-
-      <section className="wrap section">
-        <div className="cta">
-          <div><h2>Hiring? Post a job in minutes</h2><p>Reach thousands of job seekers and get your opening shared on our social channels.</p></div>
-          <Link to="/register?role=employer" className="btn btn-light">Start hiring</Link>
-        </div>
-      </section>
-    </>
+        </section>
+      )}
+    </div>
   )
 }

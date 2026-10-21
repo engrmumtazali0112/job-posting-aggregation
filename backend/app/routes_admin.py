@@ -1,4 +1,4 @@
-﻿from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
@@ -11,6 +11,7 @@ from .security import require_role
 from .services import (get_require_approval, set_require_approval, apply_job_fields,
                        resolve_location, delete_jobs)
 from .ingest import run_all, SOURCES, get_source
+from .services import notify
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_role("admin"))])
 
@@ -78,8 +79,19 @@ def set_status(job_id: int, status: str, db: Session):
     job = db.get(Job, job_id)
     if not job:
         raise HTTPException(404, "Job not found")
+    was = job.status
     job.status = status
+    company = db.get(Company, job.company_id) if job.company_id else None
+    if company and company.user_id and was != status and status in ("published", "rejected"):
+        notify(db, company.user_id, f"Your job {job.title} was {'approved and is now live' if status == 'published' else 'rejected'}.",
+               "/employer/dashboard/jobs")
     db.commit()
+    if status == "published" and was != "published" and job.source_type == "employer":
+        try:
+            from .telegram import share_jobs
+            share_jobs([job])
+        except Exception as exc:
+            print("[telegram]", exc)
     return {"id": job.id, "status": job.status}
 
 @router.post("/jobs/{job_id}/approve")
@@ -106,8 +118,18 @@ def bulk(data: BulkIn, db: Session = Depends(get_db)):
     if data.action == "delete":
         return {"affected": delete_jobs(db, data.ids)}
     new_status = "published" if data.action == "approve" else "rejected"
+    to_share = []
+    if new_status == "published":
+        to_share = db.scalars(select(Job).where(Job.id.in_(data.ids), Job.status != "published",
+                                                Job.source_type == "employer")).all()
     res = db.execute(update(Job).where(Job.id.in_(data.ids)).values(status=new_status))
     db.commit()
+    if to_share:
+        try:
+            from .telegram import share_jobs
+            share_jobs(to_share)
+        except Exception as exc:
+            print("[telegram]", exc)
     return {"affected": res.rowcount}
 
 # ---------- users ----------

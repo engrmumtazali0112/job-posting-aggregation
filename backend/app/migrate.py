@@ -1,4 +1,4 @@
-﻿import sys
+import sys
 from sqlalchemy import inspect, text
 from .database import Base, engine
 from . import models  # noqa: F401
@@ -42,7 +42,26 @@ def run(dry=False):
     with engine.begin() as conn:
         for ddl in todo:
             conn.execute(text(ddl))
+        if dialect == "postgresql":
+            # companies can now be unclaimed (created from aggregated jobs)
+            conn.execute(text("ALTER TABLE companies ALTER COLUMN user_id DROP NOT NULL"))
     print("Migration finished.", len(todo), "column(s) added.")
+    backfill_companies()
+
+
+def backfill_companies():
+    """Create unclaimed company pages for existing aggregated jobs that have none."""
+    from sqlalchemy import select
+    from .database import SessionLocal
+    from .models import Job
+    from .services import unclaimed_company
+    with SessionLocal() as db:
+        jobs = db.scalars(select(Job).where(Job.company_id.is_(None), Job.company_name != "Unknown")).all()
+        cache: dict = {}
+        for j in jobs:
+            j.company_id = unclaimed_company(db, j.company_name, cache).id
+        db.commit()
+        print("Linked", len(jobs), "job(s) to company pages.")
 
 if __name__ == "__main__":
     run(dry="--dry-run" in sys.argv)

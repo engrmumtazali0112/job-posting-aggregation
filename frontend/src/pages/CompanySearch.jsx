@@ -1,42 +1,34 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { api, qs } from '../api'
+import Icon from '../components/Icon.jsx'
+import { Avatar } from '../components/JobCard.jsx'
+import { Stars } from '../components/ui.jsx'
 
 export default function CompanySearch() {
-  const nav = useNavigate()
-  const [q, setQ] = useState('')
-
-  const search = (e) => {
-    e.preventDefault()
-    if (q) nav(`/companies/search?q=${q}`) // We'll need to add this route later
-  }
+  const [sp, setSp] = useSearchParams(); const query = sp.get('q') || ''
+  const [q, setQ] = useState(query); const [list, setList] = useState(null)
+  useEffect(() => { setQ(query); setList(null); api('/companies?' + qs({ q: query, limit: 18 })).then(setList).catch(() => setList([])) }, [query])
+  const search = (e) => { e.preventDefault(); setSp(q.trim() ? { q: q.trim() } : {}) }
 
   return (
-    <div style={{ background: 'var(--beige)', minHeight: '80vh' }}>
-      <div className="wrap" style={{ paddingTop: '80px' }}>
-        <h1 style={{ fontSize: '48px', marginBottom: '10px' }}>Find great places to work</h1>
-        <p style={{ fontSize: '20px', color: 'var(--mut)', marginBottom: '30px' }}>Get access to millions of company reviews</p>
-        
-        <form onSubmit={search} style={{ display: 'flex', gap: '10px', maxWidth: '800px', marginBottom: '15px' }}>
-          <input placeholder="Company name or job title" value={q} onChange={e => setQ(e.target.value)} style={{ flex: 1, padding: '15px', fontSize: '18px', border: '1px solid var(--line)', borderRadius: '8px' }} />
-          <button className="btn btn-primary" style={{ padding: '0 40px', fontSize: '18px' }}>Find Companies</button>
+    <div className="wrap">
+      <div className="co-hero">
+        <h1>Find great places to work</h1>
+        <p className="muted" style={{ fontSize: 20, marginBottom: 28 }}>Read reviews from people who work there</p>
+        <form onSubmit={search} className="pill-search" style={{ margin: 0 }}>
+          <label className="f"><Icon name="search" /><input placeholder="Company name" value={q} onChange={(e) => setQ(e.target.value)} /></label>
+          <button className="btn btn-primary">Find companies</button>
         </form>
-        
-        <a href="#" className="link" style={{ fontSize: '16px' }}>Do you want to search for salaries?</a>
-
-        <h3 style={{ marginTop: '60px', fontSize: '24px' }}>Popular companies</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginTop: '20px' }}>
-          {['SAMBA Bank', 'ROZEE.PK', 'Bank Alfalah', 'National Refinery Limited', 'ISMAIL INDUSTRIES', 'Yousaf School System'].map(c => (
-            <div key={c} className="card" style={{ padding: '20px' }}>
-              <h4 style={{ margin: '0 0 10px 0' }}>{c}</h4>
-              <div style={{ color: '#f59e0b', marginBottom: '10px' }}>★★★★☆ <span style={{ color: 'var(--p)' }}>Reviews</span></div>
-              <div style={{ display: 'flex', gap: '15px', fontSize: '14px', color: 'var(--mut)' }}>
-                <span>Salaries</span>
-                <span>Q&A</span>
-                <span>Open jobs</span>
-              </div>
-            </div>
-          ))}
-        </div>
+        <h3 style={{ marginTop: 50, fontSize: 24 }}>{query ? `Results for “${query}”` : 'Popular companies'}</h3>
+        {list === null ? <div className="co-grid">{[1, 2, 3].map((i) => <div key={i} className="card skel" />)}</div>
+          : list.length === 0 ? <div className="card empty" style={{ marginTop: 18 }}>No companies found.</div>
+          : <div className="co-grid">{list.map((c) => (
+            <Link key={c.id} to={'/companies/' + c.id} className="card co-card">
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}><Avatar name={c.name} /><h4 style={{ margin: 0 }}>{c.name}</h4></div>
+              <div>{c.review_count ? <><Stars value={c.average_rating} /> <span className="muted small">{c.average_rating} · {c.review_count} review{c.review_count === 1 ? '' : 's'}</span></> : <span className="muted small">No reviews yet</span>}</div>
+              <div className="co-links"><span>{c.open_jobs} open job{c.open_jobs === 1 ? '' : 's'}</span></div>
+            </Link>))}</div>}
       </div>
     </div>
   )
