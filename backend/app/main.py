@@ -7,9 +7,7 @@ from .config import settings
 from .database import Base, engine, get_db
 from .models import Job
 from .schemas import JobPublic
-from . import routes_auth, routes_employer, routes_admin, scheduler
-from . import routes_auth, routes_employer, routes_admin, routes_seeker, scheduler
-
+from . import routes_auth, routes_employer, routes_admin, routes_seeker, routes_company, scheduler
 
 Base.metadata.create_all(bind=engine)
 
@@ -22,16 +20,19 @@ async def lifespan(app):
 app = FastAPI(title="Job Platform API", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in settings.cors_origins.split(",")],
                    allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Total-Count"])
+
 app.include_router(routes_auth.router)
 app.include_router(routes_employer.router)
 app.include_router(routes_admin.router)
+app.include_router(routes_seeker.router)
+app.include_router(routes_company.router)
 
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
 
 @app.get("/api/jobs", response_model=list[JobPublic])
-def list_jobs(q: str = "", location: str = "", source: str = "", job_type: str = "", workplace: str = "",
+def list_jobs(q: str = "", location: str = "", source: str = "", job_type: str = "", workplace: str = "", category: str = "",
               limit: int = 12, offset: int = 0, db: Session = Depends(get_db)):
     stmt = select(Job).where(Job.status == "published").order_by(Job.created_at.desc())
     if q:
@@ -45,6 +46,8 @@ def list_jobs(q: str = "", location: str = "", source: str = "", job_type: str =
         stmt = stmt.where(Job.job_type == job_type)
     if workplace:
         stmt = stmt.where(Job.workplace_type == workplace)
+    if category:
+        stmt = stmt.where(Job.job_category == category)
     return db.scalars(stmt.limit(min(limit, 50)).offset(offset)).all()
 
 @app.get("/api/jobs/{job_id}", response_model=JobPublic)
@@ -53,5 +56,3 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
     if not job or job.status != "published":
         raise HTTPException(404, "Job not found")
     return job
-# Add this with the other include_router calls
-app.include_router(routes_seeker.router)

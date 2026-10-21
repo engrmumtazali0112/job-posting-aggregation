@@ -30,6 +30,7 @@ def apply_job_fields(job: Job, data: JobIn) -> None:
     job.workplace_type = data.workplace_type
     job.location = resolve_location(data)
     job.job_type = data.job_type
+    job.job_category = data.job_category
     job.openings = data.openings
     job.hiring_timeline = data.hiring_timeline
     job.salary_min = data.salary_min
