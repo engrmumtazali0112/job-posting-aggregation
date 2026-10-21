@@ -7,7 +7,7 @@ from .config import settings
 from .database import Base, engine, get_db
 from .models import Job
 from .schemas import JobPublic
-from . import routes_auth, routes_employer, routes_admin, routes_seeker, scheduler
+from . import routes_auth, routes_employer, routes_admin, scheduler
 
 Base.metadata.create_all(bind=engine)
 
@@ -23,7 +23,6 @@ app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in settings.co
 app.include_router(routes_auth.router)
 app.include_router(routes_employer.router)
 app.include_router(routes_admin.router)
-app.include_router(routes_seeker.router)
 
 @app.get("/api/health")
 def health():
