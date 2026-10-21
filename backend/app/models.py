@@ -1,6 +1,6 @@
-﻿import hashlib
+import hashlib
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, DateTime, ForeignKey, Boolean, Integer, UniqueConstraint
+from sqlalchemy import String, Text, DateTime, ForeignKey, Boolean, Integer, UniqueConstraint, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from .database import Base
 
@@ -21,13 +21,14 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(20), default="job_seeker")
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    auth_provider: Mapped[str] = mapped_column(String(20), default="password")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 class Company(Base):
     __tablename__ = "companies"
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    name: Mapped[str] = mapped_column(String(200))
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))   # NULL = unclaimed (auto-created from aggregated jobs)
+    name: Mapped[str] = mapped_column(String(200), index=True)
     website: Mapped[str | None] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(Text)
     logo_url: Mapped[str | None] = mapped_column(String(500))
@@ -75,6 +76,7 @@ class Application(Base):
     status: Mapped[str] = mapped_column(String(20), default="new")
     cover_letter: Mapped[str | None] = mapped_column(Text)
     resume_url: Mapped[str | None] = mapped_column(String(500))
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 class SavedJob(Base):
@@ -110,4 +112,39 @@ class SalaryReport(Base):
     base_salary: Mapped[int] = mapped_column(Integer)
     currency: Mapped[str] = mapped_column(String(5), default="PKR")
     period: Mapped[str] = mapped_column(String(10), default="month")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+# --- seeker profile, notifications, messages ---
+class SeekerProfile(Base):
+    __tablename__ = "seeker_profiles"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    phone: Mapped[str | None] = mapped_column(String(40))
+    location: Mapped[str | None] = mapped_column(String(150))
+    visible: Mapped[bool] = mapped_column(Boolean, default=True)          # "Employers can find you"
+    resume_url: Mapped[str | None] = mapped_column(String(500))
+    resume_name: Mapped[str | None] = mapped_column(String(200))
+    job_titles: Mapped[list | None] = mapped_column(JSON)
+    job_types: Mapped[list | None] = mapped_column(JSON)
+    min_pay: Mapped[int | None] = mapped_column(Integer)
+    min_pay_period: Mapped[str] = mapped_column(String(10), default="month")
+    relocation: Mapped[str | None] = mapped_column(String(100))
+    available_now: Mapped[bool] = mapped_column(Boolean, default=False)
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    text: Mapped[str] = mapped_column(String(300))
+    link: Mapped[str | None] = mapped_column(String(200))
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+class Message(Base):
+    __tablename__ = "messages"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    application_id: Mapped[int] = mapped_column(ForeignKey("applications.id"), index=True)
+    sender_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)

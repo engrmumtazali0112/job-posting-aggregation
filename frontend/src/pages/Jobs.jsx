@@ -1,68 +1,44 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { api } from '../api'
-import JobCard from '../components/JobCard.jsx'
-const PAGE = 12
+import { apiList, qs, CATEGORIES } from '../api'
+import JobSplit from '../components/JobSplit.jsx'
+import SearchPill from '../components/SearchPill.jsx'
+const PAGE = 15
 
 export default function Jobs() {
   const [sp, setSp] = useSearchParams()
-  const [q, setQ] = useState(sp.get('q') || '')
-  const [loc, setLoc] = useState(sp.get('location') || '')
-  const [source, setSource] = useState(sp.get('source') || '')
-  const [category, setCategory] = useState(sp.get('category') || '')
-  
-  const [jobs, setJobs] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [more, setMore] = useState(false)
+  const [q, setQ] = useState(sp.get('q') || ''); const [loc, setLoc] = useState(sp.get('location') || '')
+  const category = sp.get('category') || ''; const source = sp.get('source') || ''; const workplace = sp.get('workplace') || ''
+  const [jobs, setJobs] = useState([]); const [total, setTotal] = useState(0); const [loading, setLoading] = useState(true)
 
   const load = (offset = 0) => {
     setLoading(true)
-    const p = new URLSearchParams({ 
-      q: sp.get('q') || '', 
-      location: sp.get('location') || '', 
-      source: sp.get('source') || '', 
-      category: sp.get('category') || '',
-      limit: PAGE, 
-      offset 
-    })
-    api('/jobs?' + p).then((r) => { 
-      setJobs((prev) => (offset ? [...prev, ...r] : r)); 
-      setMore(r.length === PAGE) 
-    })
-    .catch(() => setMore(false)).finally(() => setLoading(false))
+    apiList('/jobs?' + qs({ q: sp.get('q'), location: sp.get('location'), source, category, workplace, limit: PAGE, offset }))
+      .then((r) => { setJobs((prev) => (offset ? [...prev, ...r.items] : r.items)); setTotal(r.total) })
+      .catch(() => { if (!offset) { setJobs([]); setTotal(0) } }).finally(() => setLoading(false))
   }
-  
-  useEffect(() => { load(0) }, [sp])
-  
-  const submit = (e) => { e.preventDefault(); setSp({ q, location: loc, source, category }) }
+  useEffect(() => { setQ(sp.get('q') || ''); setLoc(sp.get('location') || ''); load(0) }, [sp]) // eslint-disable-line
+
+  const setParam = (k, v) => { const n = new URLSearchParams(sp); v ? n.set(k, v) : n.delete(k); setSp(n) }
+  const submit = (e) => { e.preventDefault(); const n = new URLSearchParams(sp); q ? n.set('q', q) : n.delete('q'); loc ? n.set('location', loc) : n.delete('location'); setSp(n) }
 
   return (
     <div className="wrap pad">
-      <h1 className="page-title">Find your next job</h1>
-      <form className="filters card" onSubmit={submit}>
-        <input placeholder="Job title, skill, or company" value={q} onChange={(e) => setQ(e.target.value)} />
-        <input placeholder="Location" value={loc} onChange={(e) => setLoc(e.target.value)} />
-        
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="">All Categories</option>
-          <option value="private">Private</option>
-          <option value="government">Government</option>
-          <option value="contract">Contract</option>
-          <option value="ngo">NGO</option>
+      <SearchPill q={q} loc={loc} setQ={setQ} setLoc={setLoc} onSubmit={submit} />
+      <div className="filter-line" style={{ marginTop: 18 }}>
+        <select className="mini" value={category} onChange={(e) => setParam('category', e.target.value)}>
+          <option value="">All categories</option>{Object.entries(CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-
-        <select value={source} onChange={(e) => setSource(e.target.value)}>
-          <option value="">All sources</option>
-          <option value="aggregated">Aggregated</option>
-          <option value="employer">Employer</option>
+        <select className="mini" value={workplace} onChange={(e) => setParam('workplace', e.target.value)}>
+          <option value="">Any workplace</option><option value="remote">Remote</option><option value="in_person">In person</option><option value="hybrid">Hybrid</option>
         </select>
-        
-        <button className="btn btn-primary">Search</button>
-      </form>
-      <p className="count">{loading && !jobs.length ? 'Searching…' : `${jobs.length}${more ? '+' : ''} jobs found`}</p>
-      {!loading && jobs.length === 0 ? <div className="card empty">No jobs match your search.</div>
-        : <div className="grid">{jobs.map((j) => <JobCard key={j.id} job={j} />)}</div>}
-      {more && <div className="center"><button className="btn btn-outline" disabled={loading} onClick={() => load(jobs.length)}>{loading ? 'Loading…' : 'Load more'}</button></div>}
+        <select className="mini" value={source} onChange={(e) => setParam('source', e.target.value)}>
+          <option value="">All sources</option><option value="aggregated">Aggregated</option><option value="employer">Employer</option>
+        </select>
+      </div>
+      <p className="count">{loading && !jobs.length ? 'Searching…' : `${total.toLocaleString()} job${total === 1 ? '' : 's'} found`}</p>
+      <JobSplit jobs={jobs} loading={loading} />
+      {jobs.length < total && <div className="more-wrap"><button className="btn btn-outline" disabled={loading} onClick={() => load(jobs.length)}>{loading ? 'Loading…' : 'Load more'}</button></div>}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-﻿from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 import bcrypt, jwt
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer

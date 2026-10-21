@@ -1,9 +1,10 @@
-﻿import re, html
+import re, html
 import httpx, feedparser
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from .config import settings
 from .models import Job, JobSource, make_hash
+from .services import unclaimed_company
 
 SOURCES = [
     {"name": "Arbeitnow", "type": "api", "endpoint": "https://www.arbeitnow.com/api/job-board-api"},
@@ -80,6 +81,7 @@ def save_jobs(db: Session, src: JobSource, items) -> dict:
     items = list(items)                      # fetch first, so no DB connection sits idle
     existing = set(db.scalars(select(Job.dedupe_hash)))
     new, skipped = [], 0
+    companies: dict = {}
     for it in items:
         if not it["title"] or not it["apply_url"]:
             continue
@@ -88,13 +90,30 @@ def save_jobs(db: Session, src: JobSource, items) -> dict:
             skipped += 1
             continue
         existing.add(h)                      # also catches duplicates inside this batch
-        new.append(Job(title=it["title"][:255], company_name=it["company"][:200],
+        comp = unclaimed_company(db, it["company"][:200], companies) if it["company"] != "Unknown" else None
+        new.append(Job(title=it["title"][:255], company_name=it["company"][:200], company_id=comp.id if comp else None,
                        location=it["location"][:200], description=it["description"],
                        apply_url=it["apply_url"][:500], source_type="aggregated", workplace_type=("remote" if it["location"].lower().startswith("remote") else "in_person"),
                        source_id=src.id, status="published", dedupe_hash=h))
     db.add_all(new)
     db.commit()
+    try:
+        from .telegram import share_jobs
+        if settings.telegram_share_aggregated:
+            share_jobs(new[:5])        # cap per source so the channel is not flooded
+    except Exception as exc:           # sharing must never break ingestion
+        print("[telegram]", exc)
     return {"added": len(new), "duplicates": skipped}
+
+def expire_stale(db: Session) -> int:
+    """Close aggregated jobs older than settings.stale_job_days."""
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import update
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=settings.stale_job_days)
+    res = db.execute(update(Job).where(Job.source_type == "aggregated", Job.status == "published",
+                                        Job.created_at < cutoff).values(status="closed"))
+    db.commit()
+    return res.rowcount
 
 def run_all(db: Session) -> dict:
     report = {}
@@ -107,6 +126,11 @@ def run_all(db: Session) -> dict:
         except Exception as exc:
             db.rollback()
             report[cfg["name"]] = {"error": str(exc)}
+    try:
+        report["expired"] = expire_stale(db)
+    except Exception as exc:
+        db.rollback()
+        report["expired"] = {"error": str(exc)}
     return report
 
 if __name__ == "__main__":

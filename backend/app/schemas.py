@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
@@ -43,11 +43,11 @@ class JobPublic(BaseModel):
     description: str
     apply_url: str | None
     source_type: str
+    company_id: int | None = None
     created_at: datetime
     model_config = {"from_attributes": True}
 
 class JobFull(JobPublic):
-    company_id: int | None
     hiring_timeline: str | None
     status: str
     updated_at: datetime | None
@@ -70,3 +70,20 @@ class ReviewOut(ReviewIn):
     company_id: int
     created_at: datetime
     model_config = {"from_attributes": True}
+
+class ProfileIn(BaseModel):
+    full_name: str | None = Field(default=None, max_length=150)
+    phone: str | None = Field(default=None, max_length=40)
+    location: str | None = Field(default=None, max_length=150)
+    visible: bool = True
+    resume_url: str | None = Field(default=None, max_length=500)
+    resume_name: str | None = Field(default=None, max_length=200)
+    job_titles: list[str] = Field(default_factory=list, max_length=15)
+    job_types: list[JobType] = Field(default_factory=list)
+    min_pay: int | None = Field(default=None, ge=0)
+    min_pay_period: SalaryPeriod = "month"
+    relocation: str | None = Field(default=None, max_length=100)
+    available_now: bool = False
+
+class MessageIn(BaseModel):
+    body: str = Field(min_length=1, max_length=3000)

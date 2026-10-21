@@ -1,4 +1,4 @@
-﻿from typing import Literal
+from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr, Field

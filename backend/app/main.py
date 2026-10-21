@@ -1,13 +1,14 @@
-﻿from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Depends, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, get_db
 from .models import Job
 from .schemas import JobPublic
-from . import routes_auth, routes_employer, routes_admin, routes_seeker, routes_company, scheduler
+from . import (routes_auth, routes_google_auth, routes_employer, routes_admin, routes_seeker, routes_company,
+               routes_notifications, routes_messages, scheduler)
 
 Base.metadata.create_all(bind=engine)
 
@@ -22,6 +23,9 @@ app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in settings.co
                    allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Total-Count"])
 
 app.include_router(routes_auth.router)
+app.include_router(routes_google_auth.router)
+app.include_router(routes_notifications.router)
+app.include_router(routes_messages.router)
 app.include_router(routes_employer.router)
 app.include_router(routes_admin.router)
 app.include_router(routes_seeker.router)
@@ -32,7 +36,7 @@ def health():
     return {"status": "ok"}
 
 @app.get("/api/jobs", response_model=list[JobPublic])
-def list_jobs(q: str = "", location: str = "", source: str = "", job_type: str = "", workplace: str = "", category: str = "",
+def list_jobs(response: Response, q: str = "", location: str = "", source: str = "", job_type: str = "", workplace: str = "", category: str = "",
               limit: int = 12, offset: int = 0, db: Session = Depends(get_db)):
     stmt = select(Job).where(Job.status == "published").order_by(Job.created_at.desc())
     if q:
@@ -48,6 +52,7 @@ def list_jobs(q: str = "", location: str = "", source: str = "", job_type: str =
         stmt = stmt.where(Job.workplace_type == workplace)
     if category:
         stmt = stmt.where(Job.job_category == category)
+    response.headers["X-Total-Count"] = str(db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())))
     return db.scalars(stmt.limit(min(limit, 50)).offset(offset)).all()
 
 @app.get("/api/jobs/{job_id}", response_model=JobPublic)

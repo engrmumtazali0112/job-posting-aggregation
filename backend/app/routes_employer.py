@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -8,12 +8,19 @@ from .database import get_db
 from .models import Job, Company, User, Application, make_hash
 from .schemas import JobIn, EmployerJobOut
 from .security import require_role
-from .services import get_require_approval, apply_job_fields, resolve_location, delete_jobs
+from .services import get_require_approval, apply_job_fields, resolve_location, delete_jobs, notify
 
 router = APIRouter(prefix="/api/employer", tags=["employer"])
 
 CANDIDATE_STATUSES = ("new", "reviewing", "contacting", "interviewing", "rejected", "hired")
 JOB_STATUSES = ("pending", "published", "paused", "closed", "rejected")
+
+def share(job: Job) -> None:
+    try:
+        from .telegram import share_jobs
+        share_jobs([job])
+    except Exception as exc:
+        print("[telegram]", exc)
 
 # ---------- helpers ----------
 def get_company(db: Session, user: User) -> Company:
@@ -69,6 +76,8 @@ def create_job(data: JobIn, user: User = Depends(require_role("employer")), db: 
     db.add(job)
     db.commit()
     db.refresh(job)
+    if job.status == "published":
+        share(job)
     return to_out(job, {})
 
 @router.get("/jobs", response_model=list[EmployerJobOut])
@@ -200,7 +209,15 @@ def set_candidate_status(app_id: int, data: CandidateStatusIn,
     job = db.get(Job, app.job_id) if app else None
     if not app or not job or job.company_id != company.id:
         raise HTTPException(404, "Application not found")
+    changed = app.status != data.status
     app.status = data.status
+    texts = {"reviewing": "viewed your application.", "contacting": "wants to contact you about",
+             "interviewing": "invited you to interview for", "hired": "marked you as hired for",
+             "rejected": "did not select you for"}
+    if changed and data.status in texts:
+        t = texts[data.status]
+        msg = f"{company.name} {t}" + ("" if t.endswith(".") else f" {job.title}.")
+        notify(db, app.user_id, msg, "/my/applications")
     db.commit()
     return {"id": app.id, "status": app.status}
 
