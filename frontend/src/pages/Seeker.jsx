@@ -1,38 +1,63 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import PanelLayout from '../components/PanelLayout.jsx'
 import JobCard from '../components/JobCard.jsx'
 import { Badge } from '../components/ui.jsx'
+import { Avatar } from '../components/JobCard.jsx'
 import { api, timeAgo } from '../api'
 
 export const Layout = () => (
-  <PanelLayout title="My account" items={[['/my/applications', 'My applications'], ['/my/saved', 'Saved jobs'], ['/my/profile', 'Profile']]} />
+  <PanelLayout title="My account" items={[['/my/applications', 'My jobs'], ['/my/saved', 'Saved jobs'], ['/my/profile', 'Profile']]} />
 )
 
 export function Applications() {
   const [apps, setApps] = useState(null); const [note, setNote] = useState('')
+  const [activeTab, setActiveTab] = useState('Applied')
+
   const load = () => api('/seeker/applications').then(setApps).catch((e) => setNote(e.message))
   useEffect(() => { load() }, [])
+  
   const withdraw = async (a) => {
     if (!window.confirm('Withdraw this application?')) return
     try { await api('/seeker/applications/' + a.id, { method: 'DELETE' }); load() } catch (e) { setNote(e.message) }
   }
+
   return (
-    <>
-      <h1 className="page-title">My applications</h1>
+    <div>
+      <h1 style={{ fontSize: '32px', marginBottom: '20px' }}>My jobs</h1>
+      
+      <div className="tab-bar">
+        <div className="tab-item">Saved</div>
+        <div className="tab-item active">Applied</div>
+        <div className="tab-item">Interviews</div>
+        <div className="tab-item">Archived</div>
+      </div>
+
       {note && <div className="alert">{note}</div>}
-      {apps === null ? <div className="card skel" /> : apps.length === 0 ?
-        <div className="card empty">You have not applied to any jobs yet. <Link className="link" to="/jobs">Browse jobs →</Link></div> :
-        apps.map((a) => (
-          <div className="card row" key={a.id}>
-            <div className="grow">
-              <Link to={`/jobs/${a.job_id}`}><strong>{a.job_title}</strong></Link>
-              <div className="muted">{a.company_name} · applied {timeAgo(a.created_at)}{a.job_status !== 'published' ? ' · job is ' + a.job_status : ''}</div>
+      
+      <div style={{ marginTop: '20px' }}>
+        <h4 style={{ color: 'var(--mut)', marginBottom: '15px' }}>Last 14 days</h4>
+        
+        {apps === null ? <div className="card skel" /> : apps.length === 0 ?
+          <div className="card empty">You have not applied to any jobs yet. <Link className="link" to="/jobs">Browse jobs ?</Link></div> :
+          apps.map((a) => (
+            <div key={a.id} style={{ display: 'flex', gap: '20px', borderBottom: '1px solid var(--line)', padding: '20px 0', alignItems: 'flex-start' }}>
+              <Avatar name={a.company_name} />
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: '0 0 5px 0', fontSize: '18px' }}>{a.job_title}</h3>
+                <p style={{ margin: 0, color: 'var(--mut)' }}>{a.company_name}</p>
+                <p style={{ margin: '5px 0', color: 'var(--mut)', fontSize: '13px' }}>Applied on {timeAgo(a.created_at)}</p>
+              </div>
+              
+              <div style={{ textAlign: 'right' }}>
+                <span className={'status s-' + a.status} style={{ display: 'inline-block', marginBottom: '10px' }}>{a.status}</span>
+                <br/>
+                <button className="btn btn-outline sm" onClick={() => withdraw(a)}>Update status</button>
+              </div>
             </div>
-            <Badge s={a.status} />
-            <button className="btn btn-ghost sm danger" onClick={() => withdraw(a)}>Withdraw</button>
-          </div>))}
-    </>
+          ))}
+      </div>
+    </div>
   )
 }
 

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, timeAgo, payText, JOB_TYPES, WORKPLACES } from '../api'
 import { useAuth } from '../auth.jsx'
@@ -37,27 +37,27 @@ export default function JobDetail() {
 
   return (
     <div className="wrap pad detail">
-      <Link to="/jobs" className="link">← Back to jobs</Link>
+      <Link to="/jobs" className="link">? Back to jobs</Link>
       <div className="card detail-card">
         <div className="job-top">
           <Avatar name={job.company_name} />
           <div className="job-head"><h1>{job.title}</h1><p>{job.company_name}</p></div>
         </div>
         <div className="meta big">
-          <span>📍 {job.location || 'Not specified'}</span>
-          {emp && <span>🏢 {WORKPLACES[job.workplace_type] || job.workplace_type}</span>}
-          {emp && <span>💼 {JOB_TYPES[job.job_type] || job.job_type}</span>}
-          {pay && <span>💰 {pay}</span>}
-          <span>🕒 Posted {timeAgo(job.created_at)}</span>
+          <span>?? {job.location || 'Not specified'}</span>
+          {emp && <span>?? {WORKPLACES[job.workplace_type] || job.workplace_type}</span>}
+          {emp && <span>?? {JOB_TYPES[job.job_type] || job.job_type}</span>}
+          {pay && <span>?? {pay}</span>}
+          <span>?? Posted {timeAgo(job.created_at)}</span>
           <span className={'tag ' + (emp ? 'tag-emp' : 'tag-agg')}>{emp ? 'Employer' : 'Aggregated'}</span>
         </div>
 
         <div className="acts wrap-acts">
           {emp && seeker && !applied && <button className="btn btn-primary" onClick={() => setShow(!show)}>Apply on JobBoard</button>}
-          {emp && seeker && applied && <span className="status s-published">Applied ✓</span>}
+          {emp && seeker && applied && <span className="status s-published">Applied ?</span>}
           {emp && !user && <Link className="btn btn-primary" to="/login">Log in to apply</Link>}
-          {job.apply_url && <a className={'btn ' + (emp ? 'btn-outline' : 'btn-primary')} href={job.apply_url} target="_blank" rel="noopener noreferrer">{emp ? 'Employer website ↗' : 'Apply now ↗'}</a>}
-          {seeker && <button className="btn btn-outline" onClick={toggleSave}>{saved ? '★ Saved' : '☆ Save job'}</button>}
+          {job.apply_url && <a className={'btn ' + (emp ? 'btn-outline' : 'btn-primary')} href={job.apply_url} target="_blank" rel="noopener noreferrer">{emp ? 'Employer website ?' : 'Apply now ?'}</a>}
+          {seeker && <button className="btn btn-outline" onClick={toggleSave}>{saved ? '? Saved' : '? Save job'}</button>}
         </div>
         {msg && <div className={msg.ok ? 'alert ok' : 'alert'} style={{ marginTop: 14 }}>{msg.t}</div>}
 
@@ -65,7 +65,7 @@ export default function JobDetail() {
           <form className="form apply-box" onSubmit={apply}>
             <label>Cover letter (optional)<textarea rows={6} maxLength={5000} value={f.cover_letter} onChange={(e) => setF({ ...f, cover_letter: e.target.value })} /></label>
             <label>Link to your resume (Google Drive, LinkedIn, etc.)<input value={f.resume_url} onChange={(e) => setF({ ...f, resume_url: e.target.value })} placeholder="https://" /></label>
-            <button className="btn btn-primary" disabled={busy}>{busy ? 'Sending…' : 'Send application'}</button>
+            <button className="btn btn-primary" disabled={busy}>{busy ? 'Sending�' : 'Send application'}</button>
           </form>
         )}
 

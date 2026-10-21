@@ -1,4 +1,4 @@
-﻿export const getToken = () => localStorage.getItem('jb_token')
+export const getToken = () => localStorage.getItem('jb_token')
 export const setToken = (t) => (t ? localStorage.setItem('jb_token', t) : localStorage.removeItem('jb_token'))
 
 async function request(path, { method = 'GET', body, form } = {}) {
@@ -46,6 +46,6 @@ export function payText(j) {
   if (a == null && b == null) return ''
   const n = (x) => Number(x).toLocaleString('en-US')
   const cur = !j.currency || j.currency === 'PKR' ? 'Rs' : j.currency
-  const range = a != null && b != null ? `${n(a)} – ${n(b)}` : a != null ? `from ${n(a)}` : `up to ${n(b)}`
+  const range = a != null && b != null ? `${n(a)} � ${n(b)}` : a != null ? `from ${n(a)}` : `up to ${n(b)}`
   return `${cur} ${range} per ${j.salary_period || 'month'}`
 }
