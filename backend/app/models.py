@@ -49,6 +49,7 @@ class Job(Base):
     location: Mapped[str] = mapped_column(String(200), default="")
     workplace_type: Mapped[str] = mapped_column(String(20), default="in_person")   # in_person | remote | hybrid
     job_type: Mapped[str] = mapped_column(String(20), default="full_time")
+    job_category: Mapped[str] = mapped_column(String(50), default="private") # private | government | contract | ngo
     openings: Mapped[int] = mapped_column(Integer, default=1)
     hiring_timeline: Mapped[str | None] = mapped_column(String(40))
     salary_min: Mapped[int | None] = mapped_column(Integer)
@@ -60,7 +61,6 @@ class Job(Base):
     source_type: Mapped[str] = mapped_column(String(20))
     source_id: Mapped[int | None] = mapped_column(ForeignKey("job_sources.id"))
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"))
-    # pending | published | rejected | paused | closed
     status: Mapped[str] = mapped_column(String(20), default="published")
     dedupe_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
@@ -72,7 +72,6 @@ class Application(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    # new | reviewing | contacting | interviewing | rejected | hired
     status: Mapped[str] = mapped_column(String(20), default="new")
     cover_letter: Mapped[str | None] = mapped_column(Text)
     resume_url: Mapped[str | None] = mapped_column(String(500))
@@ -90,3 +89,25 @@ class AppSetting(Base):
     __tablename__ = "app_settings"
     name: Mapped[str] = mapped_column(String(50), primary_key=True)
     value: Mapped[str] = mapped_column(String(500), default="")
+
+# --- NEW GLASSDDOOR-STYLE TABLES ---
+class CompanyReview(Base):
+    __tablename__ = "company_reviews"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    rating: Mapped[int] = mapped_column(Integer) # 1 to 5
+    title: Mapped[str] = mapped_column(String(150))
+    pros: Mapped[str] = mapped_column(Text)
+    cons: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+class SalaryReport(Base):
+    __tablename__ = "salary_reports"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), index=True)
+    job_title: Mapped[str] = mapped_column(String(200))
+    base_salary: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(5), default="PKR")
+    period: Mapped[str] = mapped_column(String(10), default="month")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)

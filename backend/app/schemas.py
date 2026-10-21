@@ -5,12 +5,14 @@ from pydantic import BaseModel, Field, model_validator
 WorkplaceType = Literal["in_person", "remote", "hybrid"]
 JobType = Literal["full_time", "part_time", "contract", "fresher", "temporary", "internship"]
 SalaryPeriod = Literal["hour", "day", "week", "month", "year"]
+JobCategory = Literal["private", "government", "contract", "ngo"]
 
 class JobIn(BaseModel):
     title: str = Field(min_length=3, max_length=255)
     workplace_type: WorkplaceType = "in_person"
     location: str = Field(default="", max_length=200)
     job_type: JobType = "full_time"
+    job_category: JobCategory = "private"
     openings: int = Field(default=1, ge=1, le=500)
     hiring_timeline: str | None = Field(default=None, max_length=40)
     salary_min: int | None = Field(default=None, ge=0)
@@ -32,6 +34,7 @@ class JobPublic(BaseModel):
     location: str
     workplace_type: str
     job_type: str
+    job_category: str
     openings: int
     salary_min: int | None
     salary_max: int | None
@@ -55,3 +58,15 @@ class EmployerJobOut(JobFull):
 class ApplicationIn(BaseModel):
     cover_letter: str | None = Field(default=None, max_length=5000)
     resume_url: str | None = Field(default=None, max_length=500)
+
+class ReviewIn(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    title: str = Field(min_length=3, max_length=150)
+    pros: str = Field(min_length=10)
+    cons: str = Field(min_length=10)
+
+class ReviewOut(ReviewIn):
+    id: int
+    company_id: int
+    created_at: datetime
+    model_config = {"from_attributes": True}
