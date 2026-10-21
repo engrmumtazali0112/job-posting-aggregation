@@ -8,6 +8,8 @@ from .database import Base, engine, get_db
 from .models import Job
 from .schemas import JobPublic
 from . import routes_auth, routes_employer, routes_admin, scheduler
+from . import routes_auth, routes_employer, routes_admin, routes_seeker, scheduler
+
 
 Base.metadata.create_all(bind=engine)
 
@@ -51,3 +53,5 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
     if not job or job.status != "published":
         raise HTTPException(404, "Job not found")
     return job
+# Add this with the other include_router calls
+app.include_router(routes_seeker.router)
