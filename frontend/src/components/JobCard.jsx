@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom'
-import { timeAgo } from '../api'
+﻿import { Link } from 'react-router-dom'
+import { timeAgo, payText, JOB_TYPES } from '../api'
 const COLORS = ['#5b3cc4', '#0f9d8a', '#e0712c', '#d6336c', '#2f7de1', '#7a8b1f']
 export function Avatar({ name = '?' }) {
   const c = COLORS[[...name].reduce((a, ch) => a + ch.charCodeAt(0), 0) % COLORS.length]
@@ -8,6 +8,7 @@ export function Avatar({ name = '?' }) {
 }
 export default function JobCard({ job }) {
   const emp = job.source_type === 'employer'
+  const pay = payText(job)
   return (
     <Link to={`/jobs/${job.id}`} className="card job">
       <div className="job-top">
@@ -20,6 +21,8 @@ export default function JobCard({ job }) {
       <div className="meta">
         <span>📍 {job.location || 'Not specified'}</span>
         <span>🕒 {timeAgo(job.created_at)}</span>
+        {job.job_type && emp && <span>💼 {JOB_TYPES[job.job_type] || job.job_type}</span>}
+        {pay && <span>💰 {pay}</span>}
       </div>
       <div className="job-foot">
         <span className={'tag ' + (emp ? 'tag-emp' : 'tag-agg')}>{emp ? 'Employer' : 'Aggregated'}</span>
