@@ -5,6 +5,7 @@ import { useAuth } from '../auth.jsx'
 import JobSplit from '../components/JobSplit.jsx'
 import SearchPill from '../components/SearchPill.jsx'
 import Icon from '../components/Icon.jsx'
+import { TopCompanies, Trending, SuccessStories } from '../components/HomeSections.jsx'
 
 const POPULAR = ['IT jobs', 'Remote', 'Islamabad', 'Rawalpindi', 'Lahore', 'Karachi', 'Marketing', 'Engineer']
 const short = (n) => (n >= 1000 ? Math.round(n / 1000) + 'K' : n)
@@ -13,6 +14,7 @@ export default function Home() {
   const nav = useNavigate(); const { user } = useAuth()
   const [q, setQ] = useState(''); const [loc, setLoc] = useState('')
   const [jobs, setJobs] = useState(null); const [profile, setProfile] = useState(null)
+  const [videoOk, setVideoOk] = useState(true)
   const seeker = user?.role === 'job_seeker'
 
   useEffect(() => {
@@ -31,34 +33,54 @@ export default function Home() {
   const name = user?.full_name?.split(' ')[0] || user?.email?.split('@')[0]
 
   return (
-    <div className="wrap">
-      <div className="page-top"><SearchPill q={q} loc={loc} setQ={setQ} setLoc={setLoc} onSubmit={go} /></div>
-
-      {user ? (
-        <>
-          <h1 className="welcome">Welcome, {name}</h1>
-          {profile?.min_pay ? <div className="paychip"><Icon name="cash" size={18} />Rs {short(profile.min_pay)} / {profile.min_pay_period === 'month' ? 'mo' : profile.min_pay_period}</div> : null}
-        </>
-      ) : (
-        <div style={{ textAlign: 'center', marginTop: 34 }}>
-          <h1 style={{ fontSize: 'clamp(32px,5vw,52px)', letterSpacing: -1.2, lineHeight: 1.1 }}>Find your <em style={{ fontStyle: 'normal', color: 'var(--p)' }}>next job</em></h1>
-          <p className="muted" style={{ fontSize: 18, margin: '10px 0 16px' }}>Jobs from top sources and verified employers, refreshed every 30 minutes.</p>
-          <div className="chips"><span>Popular:</span>{POPULAR.map((p) => <Link key={p} className="chip" to={`/jobs?q=${encodeURIComponent(p)}`}>{p}</Link>)}</div>
+    <>
+      <section className="hero">
+        {videoOk && (
+          <video className="hero-video" autoPlay muted loop playsInline preload="metadata"
+            aria-hidden="true" onError={() => setVideoOk(false)}>
+            <source src="/hero.mp4" type="video/mp4" />
+          </video>
+        )}
+        <div className="hero-shade" />
+        <div className="wrap hero-in">
+          <div className="hero-copy">
+            {user ? <h1>Welcome back, {name}</h1> : <h1>Find the right job for your next step</h1>}
+            <p>Browse jobs that match your skills and move forward in your career with confidence. Refreshed every 30 minutes.</p>
+            {user && profile?.min_pay ? <div className="paychip"><Icon name="cash" size={18} />Rs {short(profile.min_pay)} / {profile.min_pay_period === 'month' ? 'mo' : profile.min_pay_period}</div> : null}
+          </div>
+          <div className="hero-card">
+            <SearchPill q={q} loc={loc} setQ={setQ} setLoc={setLoc} onSubmit={go} />
+            <div className="hero-pop"><span>Trending</span>{POPULAR.map((p) => <Link key={p} to={`/jobs?q=${encodeURIComponent(p)}`}>{p}</Link>)}</div>
+          </div>
         </div>
-      )}
+      </section>
 
-      <h2 className="h-title">{hint ? 'Jobs for you' : 'Latest jobs'}</h2>
-      <JobSplit jobs={jobs || []} loading={jobs === null} empty="No jobs yet. Jobs appear here once they are fetched or approved." />
-      <div className="center"><Link to="/jobs" className="btn btn-outline">Browse all jobs</Link></div>
+      <div className="wrap">
+        <section className="hs">
+          <div className="hs-head">
+            <h2>{hint ? 'Jobs for you' : 'Latest jobs'}</h2>
+            <Link to="/jobs" className="btn btn-outline sm">View all</Link>
+          </div>
+          <JobSplit jobs={jobs || []} loading={jobs === null} empty="No jobs yet. Jobs appear here once they are fetched or approved." />
+        </section>
 
-      {!user && (
-        <section className="section">
-          <div className="cta">
-            <div><h2>Hiring? Post a job in minutes</h2><p>Reach thousands of job seekers and get your opening shared on our social channels.</p></div>
+        <TopCompanies />
+        <SuccessStories />
+        <Trending />
+
+        <section className="hs duo">
+          <div className="duo-card">
+            <h3>Become a candidate</h3>
+            <p>Create your profile, upload your resume and connect with employers who are hiring now.</p>
+            <Link to="/register" className="btn btn-primary">Register now</Link>
+          </div>
+          <div className="duo-card duo-dark">
+            <h3>Become an employer</h3>
+            <p>Post jobs, manage applications and reach candidates across Pakistan.</p>
             <Link to="/register?role=employer" className="btn btn-light">Start hiring</Link>
           </div>
         </section>
-      )}
-    </div>
+      </div>
+    </>
   )
 }
