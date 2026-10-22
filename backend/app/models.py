@@ -130,6 +130,12 @@ class SeekerProfile(Base):
     min_pay_period: Mapped[str] = mapped_column(String(10), default="month")
     relocation: Mapped[str | None] = mapped_column(String(100))
     available_now: Mapped[bool] = mapped_column(Boolean, default=False)
+    summary: Mapped[str | None] = mapped_column(Text)
+    skills: Mapped[list | None] = mapped_column(JSON)
+    experience: Mapped[list | None] = mapped_column(JSON)       # [{title, company, start, end, current, description}]
+    education: Mapped[list | None] = mapped_column(JSON)        # [{degree, institution, year}]
+    languages: Mapped[list | None] = mapped_column(JSON)        # [{language, level}]
+    certifications: Mapped[list | None] = mapped_column(JSON)   # [{name, issuer, year}]
 
 class Notification(Base):
     __tablename__ = "notifications"
@@ -147,4 +153,16 @@ class Message(Base):
     sender_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     body: Mapped[str] = mapped_column(Text)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+# --- home page: real testimonials, added by an admin ---
+class SuccessStory(Base):
+    __tablename__ = "success_stories"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(150))
+    role_title: Mapped[str] = mapped_column(String(150))
+    quote: Mapped[str] = mapped_column(Text)
+    hired_in: Mapped[str | None] = mapped_column(String(50))      # e.g. "6 weeks"
+    photo_url: Mapped[str | None] = mapped_column(String(500))
+    is_published: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)

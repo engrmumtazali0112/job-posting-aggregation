@@ -26,7 +26,9 @@ def profile_out(user: User, p: SeekerProfile) -> dict:
             "visible": bool(p.visible), "resume_url": p.resume_url, "resume_name": p.resume_name,
             "job_titles": p.job_titles or [], "job_types": p.job_types or [], "min_pay": p.min_pay,
             "min_pay_period": p.min_pay_period or "month", "relocation": p.relocation,
-            "available_now": bool(p.available_now)}
+            "available_now": bool(p.available_now), "summary": p.summary, "skills": p.skills or [],
+            "experience": p.experience or [], "education": p.education or [],
+            "languages": p.languages or [], "certifications": p.certifications or []}
 
 
 @router.get("/profile")
@@ -45,8 +47,57 @@ def update_profile(data: ProfileIn, user: User = Depends(seeker), db: Session = 
         setattr(p, k, getattr(data, k))
     p.job_titles = [t.strip() for t in data.job_titles if t.strip()]
     p.job_types = list(data.job_types)
+    p.summary = (data.summary or "").strip() or None
+    seen, skills = set(), []
+    for t in data.skills:                       # trim, drop blanks and case-insensitive duplicates
+        t = t.strip()[:50]
+        if t and t.lower() not in seen:
+            seen.add(t.lower())
+            skills.append(t)
+    p.skills = skills
+    p.experience = [i.model_dump() for i in data.experience]
+    p.education = [i.model_dump() for i in data.education]
+    p.languages = [i.model_dump() for i in data.languages]
+    p.certifications = [i.model_dump() for i in data.certifications]
     db.commit()
     return profile_out(user, p)
+
+
+# --- Dashboard ---
+GROUPS = {"new": "applied", "reviewing": "review", "contacting": "review",
+          "interviewing": "interview", "hired": "accepted", "rejected": "rejected"}
+
+
+def completion(p: SeekerProfile) -> dict:
+    checks = [("Add your phone number and location", bool(p.phone and p.location)),
+              ("Write a short summary", bool(p.summary)),
+              ("Add your skills", bool(p.skills)),
+              ("Add your work experience", bool(p.experience)),
+              ("Add your education", bool(p.education)),
+              ("Add languages you speak", bool(p.languages)),
+              ("Add a resume link", bool(p.resume_url)),
+              ("Add the job titles you want", bool(p.job_titles))]
+    done = [c for c, ok in checks if ok]
+    return {"percent": round(100 * len(done) / len(checks)), "done": done,
+            "next": [c for c, ok in checks if not ok]}
+
+
+@router.get("/dashboard")
+def dashboard(user: User = Depends(seeker), db: Session = Depends(get_db)):
+    p = profile_row(db, user)
+    db.commit()
+    live = (Application.user_id == user.id, Application.archived.is_not(True))
+    stats = {"total": 0, "applied": 0, "review": 0, "interview": 0, "accepted": 0, "rejected": 0}
+    for status, n in db.execute(select(Application.status, func.count()).where(*live).group_by(Application.status)).all():
+        stats[GROUPS.get(status, "applied")] += n
+        stats["total"] += n
+    recent = db.execute(select(Application, Job).join(Job, Job.id == Application.job_id).where(*live)
+                        .order_by(Application.created_at.desc()).limit(5)).all()
+    saved = db.scalar(select(func.count()).select_from(SavedJob).where(SavedJob.user_id == user.id)) or 0
+    return {"name": user.full_name or user.email.split("@")[0], "stats": stats, "saved": saved,
+            "completion": completion(p),
+            "recent": [{"id": a.id, "job_id": a.job_id, "job_title": j.title, "company_name": j.company_name,
+                        "status": a.status, "created_at": a.created_at} for a, j in recent]}
 
 
 # --- Applications ---
