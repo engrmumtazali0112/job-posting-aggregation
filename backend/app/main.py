@@ -1,11 +1,12 @@
-from contextlib import asynccontextmanager
+﻿from contextlib import asynccontextmanager
+from xml.sax.saxutils import escape
 from fastapi import FastAPI, Depends, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, or_, func
 from sqlalchemy.orm import Session
 from .config import settings
 from .database import Base, engine, get_db
-from .models import Job
+from .models import Job, Company
 from .schemas import JobPublic
 from . import (routes_auth, routes_google_auth, routes_employer, routes_admin, routes_seeker, routes_company,
                routes_notifications, routes_messages, scheduler)
@@ -35,6 +36,33 @@ app.include_router(routes_company.router)
 def health():
     return {"status": "ok"}
 
+# ---------- sitemap (served on the frontend domain through a Vercel rewrite) ----------
+STATIC_PATHS = ["/", "/jobs", "/companies", "/employer", "/about", "/contact", "/privacy", "/terms"]
+MAX_JOB_URLS = 40000          # a sitemap file may hold at most 50,000 URLs
+MAX_COMPANY_URLS = 4000
+
+@app.get("/api/sitemap.xml", include_in_schema=False)
+def sitemap(db: Session = Depends(get_db)):
+    base = settings.site_url.rstrip("/")
+
+    def entry(path: str, lastmod=None) -> str:
+        parts = [f"<loc>{escape(base + path)}</loc>"]
+        if lastmod:
+            parts.append(f"<lastmod>{lastmod.date().isoformat()}</lastmod>")
+        return "<url>" + "".join(parts) + "</url>"
+
+    items = [entry(p) for p in STATIC_PATHS]
+    jobs = db.execute(select(Job.id, Job.created_at, Job.updated_at).where(Job.status == "published")
+                      .order_by(Job.created_at.desc()).limit(MAX_JOB_URLS)).all()
+    items += [entry(f"/jobs/{jid}", updated or created) for jid, created, updated in jobs]
+    companies = db.scalars(select(Company.id).order_by(Company.id.desc()).limit(MAX_COMPANY_URLS)).all()
+    items += [entry(f"/companies/{cid}") for cid in companies]
+
+    xml = ('<?xml version="1.0" encoding="UTF-8"?>'
+           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + "".join(items) + "</urlset>")
+    return Response(content=xml, media_type="application/xml", headers={"Cache-Control": "public, max-age=3600"})
+
+# ---------- public jobs ----------
 @app.get("/api/jobs", response_model=list[JobPublic])
 def list_jobs(response: Response, q: str = "", location: str = "", source: str = "", job_type: str = "", workplace: str = "", category: str = "",
               limit: int = 12, offset: int = 0, db: Session = Depends(get_db)):
