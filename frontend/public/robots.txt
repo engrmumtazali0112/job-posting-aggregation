@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /employer/dashboard
+Disallow: /my
+Disallow: /messages
+Disallow: /notifications
+Disallow: /login
+Disallow: /register
+
+Sitemap: https://job-board-frontend-opal.vercel.app/sitemap.xml
