@@ -122,6 +122,9 @@ function ScrollTop() {
 }
 
 export default function App() {
+  const { pathname } = useLocation()
+  // dashboards (job seeker, employer, admin) have their own sidebar layout, so no footer there
+  const inPanel = /^\/(my|admin|employer\/dashboard)(\/|$)/.test(pathname)
   return (
     <>
       <ScrollTop />
@@ -167,7 +170,7 @@ export default function App() {
           <Route path="*" element={<div className="wrap pad"><div className="card empty">Page not found.</div></div>} />
         </Routes>
       </main>
-      <Footer />
+      {!inPanel && <Footer />}
     </>
   )
 }

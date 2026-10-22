@@ -4,7 +4,7 @@ import { api, JOB_TYPES, STATUS_LABEL, shortDate, timeAgo } from '../api'
 import { useAuth } from '../auth.jsx'
 import Icon from '../components/Icon.jsx'
 import JobCard from '../components/JobCard.jsx'
-import { Pager } from '../components/ui.jsx'
+import { useOutside } from '../components/ui.jsx'
 
 const LINKS = [['/my', 'dash', 'Dashboard', true], ['/my/applications', 'briefcase', 'My applications'],
   ['/my/saved', 'bookmark', 'Saved jobs'], ['/my/profile', 'user', 'Profile']]
@@ -26,6 +26,7 @@ export function Layout() {
         ))}
         <button className="sk-out" onClick={() => { logout(); nav('/') }}>Log out</button>
       </aside>
+      {open && <div className="sk-backdrop" onClick={() => setOpen(false)} />}
       <section className="sk-main">
         <div className="sk-bar">
           <button className="sk-burger" onClick={() => setOpen(!open)} aria-expanded={open}>☰ Menu</button>
@@ -109,9 +110,13 @@ export function Dashboard() {
 const PER = 10
 export function Applications() {
   const [items, setItems] = useState(null); const [err, setErr] = useState('')
-  const [q, setQ] = useState(''); const [filter, setFilter] = useState(''); const [off, setOff] = useState(0)
+  const [q, setQ] = useState(''); const [filter, setFilter] = useState(''); const [page, setPage] = useState(0)
   const [sort, setSort] = useState({ key: 'created_at', dir: 'desc' })
-  const load = () => api('/seeker/applications').then(setItems).catch((e) => setErr(e.message))
+  const [sel, setSel] = useState([])
+  const [cols, setCols] = useState({ company_name: true, location: true, created_at: true, status: true })
+  const [colMenu, setColMenu] = useState(false)
+  const colRef = useOutside(colMenu, () => setColMenu(false))
+  const load = () => api('/seeker/applications').then((d) => { setItems(d); setSel([]) }).catch((e) => setErr(e.message))
   useEffect(() => { load() }, [])
 
   const stats = useMemo(() => {
@@ -127,44 +132,90 @@ export function Applications() {
     return [...r].sort((a, b) => (String(a[k] ?? '') < String(b[k] ?? '') ? -1 : String(a[k] ?? '') > String(b[k] ?? '') ? 1 : 0) * m)
   }, [items, q, filter, sort])
 
-  const th = (key, label) => (
-    <th><button className="sk-th" onClick={() => { setSort((s) => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' })); setOff(0) }}>
-      {label}{sort.key === key ? (sort.dir === 'asc' ? ' ↑' : ' ↓') : ' ↕'}</button></th>)
+  const pages = Math.max(1, Math.ceil(rows.length / PER))
+  const cur = Math.min(page, pages - 1)
+  const slice = rows.slice(cur * PER, cur * PER + PER)
+  const from = rows.length ? cur * PER + 1 : 0, to = Math.min(rows.length, cur * PER + PER)
+  const allOn = slice.length > 0 && slice.every((a) => sel.includes(a.id))
+  const toggle = (id) => setSel((x) => (x.includes(id) ? x.filter((i) => i !== id) : [...x, id]))
+
+  const th = (key, label) => cols[key] === false ? null : (
+    <th><button className="sk-th" onClick={() => { setSort((s) => ({ key, dir: s.key === key && s.dir === 'asc' ? 'desc' : 'asc' })); setPage(0) }}>
+      {label} <span className="ap-sort" aria-hidden="true">{sort.key === key ? (sort.dir === 'asc' ? '↑' : '↓') : '⇅'}</span></button></th>)
   const archive = async (a) => { try { await api(`/seeker/applications/${a.id}/archive?archived=${!a.archived}`, { method: 'POST' }); load() } catch (e) { setErr(e.message) } }
+  const archiveSel = async () => {
+    const mine = (items || []).filter((a) => sel.includes(a.id))
+    try { await Promise.all(mine.map((a) => api(`/seeker/applications/${a.id}/archive?archived=${!a.archived}`, { method: 'POST' }))); load() } catch (e) { setErr(e.message) }
+  }
   const withdraw = async (a) => {
     if (!window.confirm(`Withdraw your application for "${a.job_title}"? This cannot be undone.`)) return
     try { await api('/seeker/applications/' + a.id, { method: 'DELETE' }); load() } catch (e) { setErr(e.message) }
   }
+  const COLS = [['company_name', 'Company'], ['location', 'Location'], ['created_at', 'Applied date'], ['status', 'Status']]
+  const span = 3 + COLS.filter(([k]) => cols[k] !== false).length
 
   return (
     <>
-      <h1 className="page-title">My applications</h1>
-      <p className="muted">Track and manage all your job applications in one place.</p>
-      <div className="sk-stats five">
-        {[['Total', stats.total], ['Applied', stats.applied], ['Under review', stats.review], ['Interviews', stats.interview], ['Accepted', stats.accepted]].map(([l, n]) => <div key={l} className="card sk-stat"><b>{n}</b><span>{l}</span></div>)}
+      <h1 className="page-title">My Applications</h1>
+      <p className="ap-sub">Track and manage all your job applications in one place</p>
+      <div className="ap-stats">
+        {[['Total Applications', stats.total, ''], ['Applied', stats.applied, 'blue'], ['Under Review', stats.review, 'amber'], ['Interviews', stats.interview, 'purple'], ['Accepted', stats.accepted, 'green']]
+          .map(([l, n, c]) => <div key={l} className="ap-stat"><b className={c}>{n}</b><span>{l}</span></div>)}
       </div>
-      <div className="card pad-card sk-block">
-        <div className="sk-tools">
-          <input placeholder="Search applications…" value={q} onChange={(e) => { setQ(e.target.value); setOff(0) }} aria-label="Search applications" />
-          <select value={filter} onChange={(e) => { setFilter(e.target.value); setOff(0) }} aria-label="Filter by status">
-            <option value="">All status</option>{Object.entries(GROUP_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}<option value="archived">Archived</option>
-          </select>
+
+      <div className="ap-card">
+        <h2>Applications</h2>
+        <p className="ap-sub2">A list of all your job applications with status and details</p>
+        <div className="ap-tools">
+          <label className="ap-search"><Icon name="search" size={18} />
+            <input placeholder="Search applications..." value={q} onChange={(e) => { setQ(e.target.value); setPage(0) }} aria-label="Search applications" /></label>
+          <label className="ap-select"><Icon name="filter" size={18} />
+            <select value={filter} onChange={(e) => { setFilter(e.target.value); setPage(0) }} aria-label="Filter by status">
+              <option value="">All Status</option>{Object.entries(GROUP_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}<option value="archived">Archived</option>
+            </select></label>
+          <div className="ap-colwrap" ref={colRef}>
+            <button type="button" className="ap-btn" onClick={() => setColMenu(!colMenu)} aria-haspopup="true" aria-expanded={colMenu}>Columns</button>
+            {colMenu && <div className="ap-colmenu">
+              {COLS.map(([k, l]) => <label key={k}><input type="checkbox" checked={cols[k] !== false} onChange={() => setCols({ ...cols, [k]: cols[k] === false })} />{l}</label>)}
+            </div>}
+          </div>
         </div>
-        {err && <div className="alert">{err}</div>}
-        {items === null ? <div className="card skel" /> : rows.length === 0 ? <div className="sk-empty"><p>No applications found.</p><Link to="/jobs" className="btn btn-outline sm">Browse jobs</Link></div> : (
-          <div className="sk-scroll"><table className="sk-table">
-            <thead><tr>{th('job_title', 'Job title')}{th('company_name', 'Company')}{th('location', 'Location')}{th('created_at', 'Applied')}{th('status', 'Status')}<th>Actions</th></tr></thead>
-            <tbody>{rows.slice(off, off + PER).map((a) => (
-              <tr key={a.id}>
-                <td><Link to={`/jobs/${a.job_id}`}>{a.job_title}</Link>{a.job_status !== 'published' && <small className="muted"> (no longer active)</small>}</td>
-                <td>{a.company_id ? <Link to={`/companies/${a.company_id}`}>{a.company_name}</Link> : a.company_name}</td>
-                <td>{a.location || '–'}</td><td>{shortDate(a.created_at)}</td><td><Pill s={a.status} /></td>
-                <td className="sk-rowacts"><Link to={`/messages?app=${a.id}`}>Message</Link>
-                  <button onClick={() => archive(a)}>{a.archived ? 'Unarchive' : 'Archive'}</button>
-                  <button className="danger" onClick={() => withdraw(a)}>Withdraw</button></td>
-              </tr>))}</tbody>
-          </table></div>)}
-        <Pager total={rows.length} offset={off} limit={PER} onChange={setOff} />
+        {err && <div className="alert" style={{ marginBottom: 12 }}>{err}</div>}
+        {sel.length > 0 && <div className="ap-bulk"><span>{sel.length} selected</span><button className="btn btn-outline sm" onClick={archiveSel}>Archive / Unarchive</button></div>}
+
+        <div className="ap-tablewrap"><table className="ap-table">
+          <thead><tr>
+            <th className="ap-chk"><input type="checkbox" aria-label="Select all" checked={allOn} onChange={() => setSel(allOn ? [] : slice.map((a) => a.id))} /></th>
+            {th('job_title', 'Job Title')}{th('company_name', 'Company')}{th('location', 'Location')}{th('created_at', 'Applied Date')}{th('status', 'Status')}<th>Actions</th>
+          </tr></thead>
+          <tbody>
+            {items === null ? <tr><td colSpan={span} className="ap-empty">Loading…</td></tr>
+              : slice.length === 0 ? <tr><td colSpan={span} className="ap-empty"><Icon name="doc" size={44} /><div>No applications found.</div><Link to="/jobs" className="btn btn-outline sm">Browse jobs</Link></td></tr>
+              : slice.map((a) => (
+                <tr key={a.id}>
+                  <td className="ap-chk"><input type="checkbox" aria-label={'Select ' + a.job_title} checked={sel.includes(a.id)} onChange={() => toggle(a.id)} /></td>
+                  <td><Link to={`/jobs/${a.job_id}`} className="ap-title">{a.job_title}</Link>{a.job_status !== 'published' && <small className="muted"> (no longer active)</small>}</td>
+                  {cols.company_name !== false && <td>{a.company_id ? <Link to={`/companies/${a.company_id}`}>{a.company_name}</Link> : a.company_name}</td>}
+                  {cols.location !== false && <td>{a.location || '–'}</td>}
+                  {cols.created_at !== false && <td>{shortDate(a.created_at)}</td>}
+                  {cols.status !== false && <td><Pill s={a.status} /></td>}
+                  <td className="sk-rowacts"><Link to={`/messages?app=${a.id}`}>Message</Link>
+                    <button onClick={() => archive(a)}>{a.archived ? 'Unarchive' : 'Archive'}</button>
+                    <button className="danger" onClick={() => withdraw(a)}>Withdraw</button></td>
+                </tr>))}
+          </tbody>
+        </table></div>
+
+        <div className="ap-foot">
+          <span className="ap-count">Showing {from} to {to} of {rows.length} results</span>
+          <div className="ap-pg">
+            <button aria-label="First page" disabled={cur === 0} onClick={() => setPage(0)}><Icon name="first" size={16} /></button>
+            <button aria-label="Previous page" disabled={cur === 0} onClick={() => setPage(cur - 1)}><Icon name="left" size={16} /></button>
+            <span>Page {cur + 1} of {pages}</span>
+            <button aria-label="Next page" disabled={cur >= pages - 1} onClick={() => setPage(cur + 1)}><Icon name="right" size={16} /></button>
+            <button aria-label="Last page" disabled={cur >= pages - 1} onClick={() => setPage(pages - 1)}><Icon name="last" size={16} /></button>
+          </div>
+        </div>
       </div>
     </>
   )

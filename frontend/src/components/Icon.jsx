@@ -22,6 +22,12 @@ const P = {
   eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
   check: 'M5 12l5 5 9-10',
   external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',
+  filter: 'M3 4h18l-7 8.5V19l-4 2v-8.5z',
+  columns: 'M4 4h16v16H4zM9 4v16M15 4v16',
+  first: 'M11 17l-5-5 5-5M18 17l-5-5 5-5',
+  last: 'M13 17l5-5-5-5M6 17l5-5-5-5',
+  left: 'M15 6l-6 6 6 6',
+  right: 'M9 6l6 6-6 6',
   thumbdown: 'M17 14V3M17 3H6.5a2 2 0 0 0-2 1.7l-1.2 8A2 2 0 0 0 5.3 15H11l-1 5a2 2 0 0 0 3.6 1L17 14',
 }
 export default function Icon({ name, size = 20, fill = false, ...rest }) {
