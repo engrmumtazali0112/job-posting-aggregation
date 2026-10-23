@@ -17,8 +17,8 @@ import * as S from './pages/Seeker.jsx'
 const SEEKER_MENU = [['/my', 'dash', 'Dashboard'], ['/my/applications', 'briefcase', 'My applications'], ['/my/saved', 'bookmark', 'Saved jobs'], ['/my/profile', 'user', 'Profile'], ['/companies', 'star', 'Company reviews']]
 const HIRING_MENU = [['/employer/dashboard', 'dash', 'Employer dashboard'], ['/employer/dashboard/post', 'pencil', 'Post a job'], ['/employer/dashboard/company', 'building', 'Company profile']]
 const MENU = {
-  job_seeker: [...SEEKER_MENU, ...HIRING_MENU],
-  employer: [...HIRING_MENU, ...SEEKER_MENU],
+  job_seeker: SEEKER_MENU,
+  employer: HIRING_MENU,
   admin: [['/admin', 'dash', 'Admin dashboard'], ['/admin/jobs', 'briefcase', 'Review jobs']],
 }
 
@@ -46,7 +46,7 @@ function Navbar() {
         <div className="nav-spacer" />
         {user ? (
           <>
-            {role !== 'admin' && <Link to="/my/saved" className="ibtn" title="Saved jobs"><Icon name="bookmark" fill /></Link>}
+            {role === 'job_seeker' && <Link to="/my/saved" className="ibtn" title="Saved jobs"><Icon name="bookmark" fill /></Link>}
             {role !== 'admin' && <NavLink to="/messages" className="ibtn" title="Messages"><Icon name="chat" fill />{cnt(msgCount)}</NavLink>}
             {role !== 'admin' && <NavLink to="/notifications" className="ibtn" title="Notifications"><Icon name="bell" fill />{cnt(notifCount)}</NavLink>}
             <div className="menu-wrap" ref={ref}>
@@ -66,7 +66,7 @@ function Navbar() {
             <Link to="/register" className="btn btn-outline sm">Register</Link>
           </div>
         )}
-        {role !== 'admin' && <><div className="nav-sep" /><Link to={user ? '/employer/dashboard/post' : '/employer'} className="post">Post a job</Link></>}
+        {role !== 'employer' && role !== 'admin' && <><div className="nav-sep" /><Link to="/employer" className="post">Employers / Post Job</Link></>}
       </div>
     </header>
   )
@@ -143,7 +143,7 @@ export default function App() {
           <Route path="/register" element={<Register />} />
 
           <Route path="/employer" element={<E.LandingPage />} />
-          <Route path="/employer/dashboard" element={<Protected role={['employer', 'job_seeker']}><E.Layout /></Protected>}>
+          <Route path="/employer/dashboard" element={<Protected role="employer"><E.Layout /></Protected>}>
             <Route index element={<E.Dashboard />} />
             <Route path="post" element={<E.PostJob />} />
             <Route path="jobs" element={<E.MyJobs />} />
@@ -161,7 +161,7 @@ export default function App() {
             <Route path="settings" element={<A.Settings />} />
           </Route>
 
-          <Route path="/my" element={<Protected role={['job_seeker', 'employer']}><S.Layout /></Protected>}>
+          <Route path="/my" element={<Protected role="job_seeker"><S.Layout /></Protected>}>
             <Route index element={<S.Dashboard />} />
             <Route path="applications" element={<S.Applications />} />
             <Route path="saved" element={<S.Saved />} />

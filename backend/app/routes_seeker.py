@@ -3,12 +3,12 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from .database import get_db
 from .models import User, Job, Application, SavedJob, SeekerProfile, Company
-from .security import require_role, member
+from .security import require_role
 from .schemas import ApplicationIn, ProfileIn, JobPublic
 from .services import notify
 
-router = APIRouter(prefix="/api/seeker", tags=["seeker"], dependencies=[Depends(member)])
-seeker = member
+router = APIRouter(prefix="/api/seeker", tags=["seeker"], dependencies=[Depends(require_role("job_seeker"))])
+seeker = require_role("job_seeker")
 
 
 # --- Profile ---
@@ -152,9 +152,6 @@ def apply_to_job(job_id: int, data: ApplicationIn, user: User = Depends(seeker),
         raise HTTPException(404, "Job not found or no longer active")
     if job.source_type != "employer":
         raise HTTPException(400, "This job is hosted on another website. Use the Apply now link.")
-    own = db.get(Company, job.company_id) if job.company_id else None
-    if own and own.user_id == user.id:
-        raise HTTPException(400, "You cannot apply to your own job")
     if db.scalar(select(Application).where(Application.job_id == job_id, Application.user_id == user.id)):
         raise HTTPException(409, "You have already applied to this job")
     db.add(Application(job_id=job_id, user_id=user.id, cover_letter=data.cover_letter, resume_url=data.resume_url))
