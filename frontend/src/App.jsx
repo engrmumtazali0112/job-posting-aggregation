@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, NavLink, Route, Routes, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './auth.jsx'
 import Icon from './components/Icon.jsx'
@@ -14,9 +14,11 @@ import * as E from './pages/Employer.jsx'
 import * as A from './pages/Admin.jsx'
 import * as S from './pages/Seeker.jsx'
 
+const SEEKER_MENU = [['/my', 'dash', 'Dashboard'], ['/my/applications', 'briefcase', 'My applications'], ['/my/saved', 'bookmark', 'Saved jobs'], ['/my/profile', 'user', 'Profile'], ['/companies', 'star', 'Company reviews']]
+const HIRING_MENU = [['/employer/dashboard', 'dash', 'Employer dashboard'], ['/employer/dashboard/post', 'pencil', 'Post a job'], ['/employer/dashboard/company', 'building', 'Company profile']]
 const MENU = {
-  job_seeker: [['/my', 'dash', 'Dashboard'], ['/my/applications', 'briefcase', 'My applications'], ['/my/saved', 'bookmark', 'Saved jobs'], ['/my/profile', 'user', 'Profile'], ['/companies', 'star', 'Company reviews']],
-  employer: [['/employer/dashboard', 'dash', 'Dashboard'], ['/employer/dashboard/post', 'pencil', 'Post a job'], ['/employer/dashboard/company', 'building', 'Company profile']],
+  job_seeker: [...SEEKER_MENU, ...HIRING_MENU],
+  employer: [...HIRING_MENU, ...SEEKER_MENU],
   admin: [['/admin', 'dash', 'Admin dashboard'], ['/admin/jobs', 'briefcase', 'Review jobs']],
 }
 
@@ -44,7 +46,7 @@ function Navbar() {
         <div className="nav-spacer" />
         {user ? (
           <>
-            {role === 'job_seeker' && <Link to="/my/saved" className="ibtn" title="Saved jobs"><Icon name="bookmark" fill /></Link>}
+            {role !== 'admin' && <Link to="/my/saved" className="ibtn" title="Saved jobs"><Icon name="bookmark" fill /></Link>}
             {role !== 'admin' && <NavLink to="/messages" className="ibtn" title="Messages"><Icon name="chat" fill />{cnt(msgCount)}</NavLink>}
             {role !== 'admin' && <NavLink to="/notifications" className="ibtn" title="Notifications"><Icon name="bell" fill />{cnt(notifCount)}</NavLink>}
             <div className="menu-wrap" ref={ref}>
@@ -64,7 +66,7 @@ function Navbar() {
             <Link to="/register" className="btn btn-outline sm">Register</Link>
           </div>
         )}
-        {role !== 'employer' && role !== 'admin' && <><div className="nav-sep" /><Link to="/employer" className="post">Employers / Post Job</Link></>}
+        {role !== 'admin' && <><div className="nav-sep" /><Link to={user ? '/employer/dashboard/post' : '/employer'} className="post">Post a job</Link></>}
       </div>
     </header>
   )
@@ -109,7 +111,8 @@ export function Protected({ role, children }) {
   const { user, ready } = useAuth()
   if (!ready) return <div className="wrap pad">Loading...</div>
   if (!user) return <Navigate to="/login" replace />
-  if (role && user.role !== role) return <div className="wrap pad"><div className="card empty">You do not have access to this page.</div></div>
+  const allowed = role ? [].concat(role) : null
+  if (allowed && !allowed.includes(user.role)) return <div className="wrap pad"><div className="card empty">You do not have access to this page.</div></div>
   return children
 }
 
@@ -140,7 +143,7 @@ export default function App() {
           <Route path="/register" element={<Register />} />
 
           <Route path="/employer" element={<E.LandingPage />} />
-          <Route path="/employer/dashboard" element={<Protected role="employer"><E.Layout /></Protected>}>
+          <Route path="/employer/dashboard" element={<Protected role={['employer', 'job_seeker']}><E.Layout /></Protected>}>
             <Route index element={<E.Dashboard />} />
             <Route path="post" element={<E.PostJob />} />
             <Route path="jobs" element={<E.MyJobs />} />
@@ -158,7 +161,7 @@ export default function App() {
             <Route path="settings" element={<A.Settings />} />
           </Route>
 
-          <Route path="/my" element={<Protected role="job_seeker"><S.Layout /></Protected>}>
+          <Route path="/my" element={<Protected role={['job_seeker', 'employer']}><S.Layout /></Protected>}>
             <Route index element={<S.Dashboard />} />
             <Route path="applications" element={<S.Applications />} />
             <Route path="saved" element={<S.Saved />} />

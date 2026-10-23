@@ -24,7 +24,7 @@ const FAQ = [
 
 export function LandingPage() {
   const { user } = useAuth()
-  const cta = user?.role === 'employer' ? '/employer/dashboard/post' : '/register?role=employer'
+  const cta = user ? '/employer/dashboard/post' : '/register'
   return (
     <div className="wrap">
       <section className="e-hero">
@@ -32,7 +32,7 @@ export function LandingPage() {
           <h1>Hire the right people, <em style={{ fontStyle: 'normal', color: 'var(--p)' }}>faster</em></h1>
           <p>Post your job, reach job seekers across Pakistan, and manage every candidate in one place.</p>
           <div className="acts"><Link to={cta} className="btn btn-primary">Post a job</Link>
-            {user?.role === 'employer' && <Link to="/employer/dashboard" className="btn btn-outline">Go to dashboard</Link>}</div>
+            {user && user.role !== 'admin' && <Link to="/employer/dashboard" className="btn btn-outline">Go to dashboard</Link>}</div>
         </div>
         <div className="img-ph">Hero image placeholder<br />(team or office photo)</div>
       </section>
