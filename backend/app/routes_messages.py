@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, or_
 from sqlalchemy.orm import Session
 from .database import get_db
 from .models import Message, Application, Job, Company, User
@@ -26,11 +26,10 @@ def thread_access(db: Session, user: User, app_id: int):
 
 @router.get("/threads")
 def threads(user: User = Depends(current_user), db: Session = Depends(get_db)):
-    if user.role == "employer":
-        apps = (select(Application.id, Application.user_id).join(Job, Job.id == Application.job_id)
-                .join(Company, Company.id == Job.company_id).where(Company.user_id == user.id))
-    else:
-        apps = select(Application.id, Application.user_id).where(Application.user_id == user.id)
+    owned = (select(Application.id).join(Job, Job.id == Application.job_id)
+             .join(Company, Company.id == Job.company_id).where(Company.user_id == user.id))
+    apps = select(Application.id, Application.user_id).where(
+        or_(Application.user_id == user.id, Application.id.in_(owned)))
     app_ids = [r[0] for r in db.execute(apps).all()]
     if not app_ids:
         return []
@@ -45,7 +44,7 @@ def threads(user: User = Depends(current_user), db: Session = Depends(get_db)):
               Message.sender_id != user.id, Message.is_read.is_(False)).group_by(Message.application_id)).all()}
     out = []
     for m, a, j, u in rows:
-        out.append({"application_id": a.id, "title": (u.full_name or u.email) if user.role == "employer" else j.company_name,
+        out.append({"application_id": a.id, "title": j.company_name if a.user_id == user.id else (u.full_name or u.email),
                     "job_title": j.title, "last": m.body[:80], "last_from_me": m.sender_id == user.id,
                     "last_at": m.created_at, "unread": unread.get(a.id, 0)})
     return out
@@ -60,7 +59,7 @@ def get_thread(app_id: int, user: User = Depends(current_user), db: Session = De
     msgs = db.scalars(select(Message).where(Message.application_id == app_id).order_by(Message.id)).all()
     applicant = db.get(User, app.user_id)
     return {"application_id": app.id, "job_title": job.title,
-            "title": (applicant.full_name or applicant.email) if user.role == "employer" else company.name,
+            "title": company.name if user.id == app.user_id else (applicant.full_name or applicant.email),
             "messages": [{"id": m.id, "body": m.body, "mine": m.sender_id == user.id, "created_at": m.created_at}
                          for m in msgs]}
 

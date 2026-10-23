@@ -37,3 +37,5 @@ def require_role(*roles: str):
             raise HTTPException(403, "You do not have permission")
         return user
     return dep
+
+member = require_role("job_seeker", "employer")   # any normal account (not admin)

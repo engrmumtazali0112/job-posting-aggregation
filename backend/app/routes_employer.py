@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from .database import get_db
 from .models import Job, Company, User, Application, make_hash
 from .schemas import JobIn, EmployerJobOut
-from .security import require_role
+from .security import require_role, member
 from .services import get_require_approval, apply_job_fields, resolve_location, delete_jobs, notify
 
 router = APIRouter(prefix="/api/employer", tags=["employer"])
@@ -26,7 +26,12 @@ def share(job: Job) -> None:
 def get_company(db: Session, user: User) -> Company:
     company = db.scalar(select(Company).where(Company.user_id == user.id))
     if not company:
-        raise HTTPException(400, "No company profile found")
+        # any member can post jobs; a company page is created on first use
+        name = (user.full_name or user.email.split("@")[0]).strip()[:200] or "My Company"
+        company = Company(user_id=user.id, name=name)
+        db.add(company)
+        db.commit()
+        db.refresh(company)
     return company
 
 def owned_job(db: Session, company: Company, job_id: int) -> Job:
@@ -49,7 +54,7 @@ def to_out(job: Job, counts: dict[int, int]) -> EmployerJobOut:
 
 # ---------- dashboard ----------
 @router.get("/dashboard")
-def dashboard(user: User = Depends(require_role("employer")), db: Session = Depends(get_db)):
+def dashboard(user: User = Depends(member), db: Session = Depends(get_db)):
     company = get_company(db, user)
     jobs = {r[0]: r[1] for r in db.execute(select(Job.status, func.count()).where(Job.company_id == company.id)
                                            .group_by(Job.status)).all()}
@@ -65,7 +70,7 @@ def dashboard(user: User = Depends(require_role("employer")), db: Session = Depe
 
 # ---------- jobs ----------
 @router.post("/jobs", response_model=EmployerJobOut, status_code=201)
-def create_job(data: JobIn, user: User = Depends(require_role("employer")), db: Session = Depends(get_db)):
+def create_job(data: JobIn, user: User = Depends(member), db: Session = Depends(get_db)):
     company = get_company(db, user)
     h = make_hash(data.title, company.name, resolve_location(data))
     if db.scalar(select(Job).where(Job.dedupe_hash == h)):
@@ -82,7 +87,7 @@ def create_job(data: JobIn, user: User = Depends(require_role("employer")), db: 
 
 @router.get("/jobs", response_model=list[EmployerJobOut])
 def my_jobs(q: str = "", status: str = "", limit: int = 100, offset: int = 0,
-            user: User = Depends(require_role("employer")), db: Session = Depends(get_db)):
+            user: User = Depends(member), db: Session = Depends(get_db)):
     company = get_company(db, user)
     stmt = select(Job).where(Job.company_id == company.id)
     if status:
@@ -95,12 +100,12 @@ def my_jobs(q: str = "", status: str = "", limit: int = 100, offset: int = 0,
     return [to_out(j, counts) for j in jobs]
 
 @router.get("/jobs/{job_id}", response_model=EmployerJobOut)
-def get_my_job(job_id: int, user: User = Depends(require_role("employer")), db: Session = Depends(get_db)):
+def get_my_job(job_id: int, user: User = Depends(member), db: Session = Depends(get_db)):
     job = owned_job(db, get_company(db, user), job_id)
     return to_out(job, app_counts(db, [job.id]))
 
 @router.put("/jobs/{job_id}", response_model=EmployerJobOut)
-def update_job(job_id: int, data: JobIn, user: User = Depends(require_role("employer")),
+def update_job(job_id: int, data: JobIn, user: User = Depends(member),
                db: Session = Depends(get_db)):
     company = get_company(db, user)
     job = owned_job(db, company, job_id)
@@ -125,7 +130,7 @@ class StatusIn(BaseModel):
     action: Literal["pause", "resume", "close", "reopen"]
 
 @router.post("/jobs/{job_id}/status", response_model=EmployerJobOut)
-def change_status(job_id: int, data: StatusIn, user: User = Depends(require_role("employer")),
+def change_status(job_id: int, data: StatusIn, user: User = Depends(member),
                   db: Session = Depends(get_db)):
     job = owned_job(db, get_company(db, user), job_id)
     a = data.action
@@ -150,7 +155,7 @@ def change_status(job_id: int, data: StatusIn, user: User = Depends(require_role
     return to_out(job, app_counts(db, [job.id]))
 
 @router.delete("/jobs/{job_id}")
-def delete_job(job_id: int, user: User = Depends(require_role("employer")), db: Session = Depends(get_db)):
+def delete_job(job_id: int, user: User = Depends(member), db: Session = Depends(get_db)):
     job = owned_job(db, get_company(db, user), job_id)
     delete_jobs(db, [job.id])
     return {"deleted": job_id}
@@ -173,7 +178,7 @@ class CandidatesOut(BaseModel):
 
 @router.get("/candidates", response_model=CandidatesOut)
 def candidates(job_id: int | None = None, status: str = "", q: str = "", limit: int = 100, offset: int = 0,
-               user: User = Depends(require_role("employer")), db: Session = Depends(get_db)):
+               user: User = Depends(member), db: Session = Depends(get_db)):
     company = get_company(db, user)
 
     cstmt = (select(Application.status, func.count()).select_from(Application)
@@ -203,7 +208,7 @@ class CandidateStatusIn(BaseModel):
 
 @router.patch("/candidates/{app_id}")
 def set_candidate_status(app_id: int, data: CandidateStatusIn,
-                         user: User = Depends(require_role("employer")), db: Session = Depends(get_db)):
+                         user: User = Depends(member), db: Session = Depends(get_db)):
     company = get_company(db, user)
     app = db.get(Application, app_id)
     job = db.get(Job, app.job_id) if app else None
@@ -233,11 +238,11 @@ class CompanyOut(CompanyIn):
     model_config = {"from_attributes": True}
 
 @router.get("/company", response_model=CompanyOut)
-def get_company_profile(user: User = Depends(require_role("employer")), db: Session = Depends(get_db)):
+def get_company_profile(user: User = Depends(member), db: Session = Depends(get_db)):
     return get_company(db, user)
 
 @router.put("/company", response_model=CompanyOut)
-def update_company_profile(data: CompanyIn, user: User = Depends(require_role("employer")),
+def update_company_profile(data: CompanyIn, user: User = Depends(member),
                            db: Session = Depends(get_db)):
     company = get_company(db, user)
     if (data.website or None) != company.website:
