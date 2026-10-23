@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, NavLink, Route, Routes, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './auth.jsx'
 import Icon from './components/Icon.jsx'
@@ -14,9 +14,11 @@ import * as E from './pages/Employer.jsx'
 import * as A from './pages/Admin.jsx'
 import * as S from './pages/Seeker.jsx'
 
+const SEEKER_MENU = [['/my', 'dash', 'Dashboard'], ['/my/applications', 'briefcase', 'My applications'], ['/my/saved', 'bookmark', 'Saved jobs'], ['/my/profile', 'user', 'Profile'], ['/companies', 'star', 'Company reviews']]
+const HIRING_MENU = [['/employer/dashboard', 'dash', 'Employer dashboard'], ['/employer/dashboard/post', 'pencil', 'Post a job'], ['/employer/dashboard/company', 'building', 'Company profile']]
 const MENU = {
-  job_seeker: [['/my', 'dash', 'Dashboard'], ['/my/applications', 'briefcase', 'My applications'], ['/my/saved', 'bookmark', 'Saved jobs'], ['/my/profile', 'user', 'Profile'], ['/companies', 'star', 'Company reviews']],
-  employer: [['/employer/dashboard', 'dash', 'Dashboard'], ['/employer/dashboard/post', 'pencil', 'Post a job'], ['/employer/dashboard/company', 'building', 'Company profile']],
+  job_seeker: SEEKER_MENU,
+  employer: HIRING_MENU,
   admin: [['/admin', 'dash', 'Admin dashboard'], ['/admin/jobs', 'briefcase', 'Review jobs']],
 }
 
@@ -109,7 +111,8 @@ export function Protected({ role, children }) {
   const { user, ready } = useAuth()
   if (!ready) return <div className="wrap pad">Loading...</div>
   if (!user) return <Navigate to="/login" replace />
-  if (role && user.role !== role) return <div className="wrap pad"><div className="card empty">You do not have access to this page.</div></div>
+  const allowed = role ? [].concat(role) : null
+  if (allowed && !allowed.includes(user.role)) return <div className="wrap pad"><div className="card empty">You do not have access to this page.</div></div>
   return children
 }
 
