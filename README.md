@@ -78,9 +78,7 @@ Requirements: Python 3.11+, Node.js 18+, Git.
 ### 1. Backend
 
 ```powershell
-cd D:\Project\backend
-python -m venv venv
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
+CC
 ```
 
 Create the first admin user (once):
