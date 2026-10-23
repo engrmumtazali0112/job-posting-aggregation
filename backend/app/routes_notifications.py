@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy import select, func, update, or_
+from sqlalchemy import select, func, update
 from sqlalchemy.orm import Session
 from .database import get_db
 from .models import Notification, Message, Application, Job, Company, User
@@ -23,9 +23,11 @@ def counts(user: User = Depends(current_user), db: Session = Depends(get_db)):
     """Badge numbers for the navbar."""
     notes = db.scalar(select(func.count()).select_from(Notification)
                       .where(Notification.user_id == user.id, Notification.is_read.is_(False)))
-    owned = (select(Application.id).join(Job, Job.id == Application.job_id)
-             .join(Company, Company.id == Job.company_id).where(Company.user_id == user.id))
-    mine = select(Application.id).where(or_(Application.user_id == user.id, Application.id.in_(owned)))
+    if user.role == "employer":
+        mine = (select(Application.id).join(Job, Job.id == Application.job_id).join(Company, Company.id == Job.company_id)
+                .where(Company.user_id == user.id))
+    else:
+        mine = select(Application.id).where(Application.user_id == user.id)
     msgs = db.scalar(select(func.count()).select_from(Message).where(
         Message.application_id.in_(mine), Message.sender_id != user.id, Message.is_read.is_(False)))
     return {"notifications": notes or 0, "messages": msgs or 0}

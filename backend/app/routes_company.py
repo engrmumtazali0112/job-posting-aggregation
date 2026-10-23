@@ -57,8 +57,8 @@ def get_reviews(company_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{company_id}/reviews", response_model=ReviewOut, status_code=201)
 def add_review(company_id: int, data: ReviewIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    if user.role not in ("job_seeker", "employer"):
-        raise HTTPException(403, "Only members can leave reviews")
+    if user.role != "job_seeker":
+        raise HTTPException(403, "Only job seekers can leave reviews")
     if not db.get(Company, company_id):
         raise HTTPException(404, "Company not found")
     if db.scalar(select(CompanyReview).where(CompanyReview.company_id == company_id, CompanyReview.user_id == user.id)):
