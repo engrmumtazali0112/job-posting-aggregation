@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Link, NavLink, Route, Routes, Navigate, useLocation } from 'react-router-dom'
+﻿import { useState, useEffect } from 'react'
+import { Link, NavLink, Outlet, Route, Routes, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './auth.jsx'
 import Icon from './components/Icon.jsx'
 import { useOutside } from './components/ui.jsx'
@@ -116,6 +116,14 @@ export function Protected({ role, children }) {
   return children
 }
 
+// Messages and notifications open inside the user's own dashboard layout (sidebar stays visible).
+function RoleShell() {
+  const { user } = useAuth()
+  if (user?.role === 'employer') return <E.Layout />
+  if (user?.role === 'job_seeker') return <S.Layout />
+  return <Outlet />
+}
+
 function ScrollTop() {
   const { pathname } = useLocation()
   useEffect(() => {
@@ -127,7 +135,7 @@ function ScrollTop() {
 export default function App() {
   const { pathname } = useLocation()
   // dashboards (job seeker, employer, admin) have their own sidebar layout, so no footer there
-  const inPanel = /^\/(my|admin|employer\/dashboard)(\/|$)/.test(pathname)
+  const inPanel = /^\/(my|admin|employer\/dashboard|messages|notifications)(\/|$)/.test(pathname)
   return (
     <>
       <ScrollTop />
@@ -168,8 +176,10 @@ export default function App() {
             <Route path="profile" element={<S.Profile />} />
           </Route>
 
-          <Route path="/notifications" element={<Protected><Notifications /></Protected>} />
-          <Route path="/messages" element={<Protected><Messages /></Protected>} />
+          <Route element={<Protected><RoleShell /></Protected>}>
+            <Route path="/notifications" element={<Notifications />} />
+            <Route path="/messages" element={<Messages />} />
+          </Route>
           <Route path="*" element={<div className="wrap pad"><div className="card empty">Page not found.</div></div>} />
         </Routes>
       </main>

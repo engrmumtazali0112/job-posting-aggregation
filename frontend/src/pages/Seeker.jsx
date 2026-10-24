@@ -7,8 +7,8 @@ import JobCard from '../components/JobCard.jsx'
 import { useOutside } from '../components/ui.jsx'
 
 const LINKS = [['/my', 'dash', 'Dashboard', true], ['/my/applications', 'briefcase', 'My applications'],
-  ['/my/saved', 'bookmark', 'Saved jobs'], ['/my/profile', 'user', 'Profile']]
-const CRUMB = { '/my': 'Dashboard', '/my/applications': 'My applications', '/my/saved': 'Saved jobs', '/my/profile': 'Profile' }
+  ['/my/saved', 'bookmark', 'Saved jobs'], ['/my/profile', 'user', 'Profile'], ['/messages', 'chat', 'Messages'], ['/notifications', 'bell', 'Notifications']]
+const CRUMB = { '/my': 'Dashboard', '/my/applications': 'My applications', '/my/saved': 'Saved jobs', '/my/profile': 'Profile', '/messages': 'Messages', '/notifications': 'Notifications' }
 const GROUP = { new: 'applied', reviewing: 'review', contacting: 'review', interviewing: 'interview', hired: 'accepted', rejected: 'rejected' }
 const GROUP_LABEL = { applied: 'Applied', review: 'Under review', interview: 'Interview', accepted: 'Accepted', rejected: 'Not selected' }
 
