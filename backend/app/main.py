@@ -14,6 +14,13 @@ from . import (routes_auth, routes_google_auth, routes_employer, routes_admin, r
                routes_notifications, routes_messages, routes_home, scheduler)
 
 Base.metadata.create_all(bind=engine)
+try:                                    # add columns that new code needs but an older database lacks
+    from .migrate import add_missing_columns
+    _added = add_missing_columns()
+    if _added:
+        print("[migrate] added:", _added)
+except Exception as exc:                # never stop the API from starting
+    print("[migrate] skipped:", exc)
 
 @asynccontextmanager
 async def lifespan(app):
