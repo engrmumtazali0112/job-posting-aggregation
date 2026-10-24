@@ -77,6 +77,7 @@ class Application(Base):
     cover_letter: Mapped[str | None] = mapped_column(Text)
     resume_url: Mapped[str | None] = mapped_column(String(500))
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    skipped: Mapped[bool] = mapped_column(Boolean, default=False)   # employer hid it from the list (no notification)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 class SavedJob(Base):

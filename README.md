@@ -40,21 +40,24 @@ On top of the job feed there are Glassdoor-style company pages (reviews, salarie
 - Job detail page, company search, company profile with open jobs, reviews and salary reports
 
 **Job seeker** (`/my`)
-- Dashboard with profile completion and application stats
+- Dashboard with profile completion and application stats. Every card and "next step" is a link: a step opens the matching part of the profile (phone and location, job titles, summary, skills ...), and the stat cards open My applications with the right filter
 - My applications (search, status filter, sortable columns, column chooser)
 - Saved jobs, full profile (summary, skills, experience, education, languages, certifications, resume)
+- Resume upload (PDF, PNG or JPG, max 5 MB) or a link; the resume is attached automatically when applying
 - Messages and notifications, shown inside the same sidebar layout as the rest of the panel
 - Can review companies (one review per company)
 
 **Employer** (`/employer/dashboard`)
 - Dashboard with job and candidate counts
 - Post / edit / pause / resume / close / reopen / delete jobs
-- Candidate pipeline: `new → reviewing → contacting → interviewing → hired / rejected`; the candidate is notified on each change
+- Candidate pipeline: `new → reviewing → shortlisted → contacting → interviewing → hired / rejected`; the candidate is notified on each change
+- **Smart screening for busy jobs:** every applicant gets a skill-match score against the job post. The list is ranked best match first, top matches are highlighted, and each card shows matched and missing skills. One click to **Shortlist**, **Reject** (notifies the applicant) or **Skip** (hides the application, nobody is notified, can be restored). Select several for bulk actions, or use **Shortlist top matches**
+- Every dashboard card is a link to the page it counts (for example Interviewing opens Candidates filtered to interviewing)
 - Messages with candidates, company profile (name, website, description, logo)
 - Public landing page at `/employer`
 
 **Admin** (`/admin`)
-- Stats, approve / reject / edit / delete jobs (single and bulk)
+- Stats (every card opens the matching list), approve / reject / edit / delete jobs (single and bulk)
 - Manage users (activate, deactivate, verify), verify companies
 - Turn aggregation sources on or off, run aggregation now, switch "require approval" on or off
 
@@ -77,6 +80,8 @@ Project/
 │   │   ├── models.py              # all tables + make_hash()
 │   │   ├── schemas.py             # Pydantic request/response models
 │   │   ├── security.py            # password hashing, JWT, current_user, require_role
+│   │   ├── matching.py            # skill matching: job post vs applicant profile
+│   │   ├── storage.py             # resume file storage (local disk now; swap for S3/R2 later)
 │   │   ├── services.py            # shared helpers (approval setting, job fields, notify, unclaimed companies)
 │   │   ├── main.py                # FastAPI app, CORS, public job list and detail
 │   │   ├── routes_auth.py         # register, login, me
@@ -166,6 +171,9 @@ CORS_ORIGINS=http://localhost:5173
 JOOBLE_API_KEY=
 STALE_JOB_DAYS=30
 TELEGRAM_SHARE_AGGREGATED=false
+UPLOAD_DIR=uploads
+MAX_UPLOAD_MB=5
+PUBLIC_BASE_URL=
 ```
 
 | Variable | Purpose |
@@ -176,6 +184,9 @@ TELEGRAM_SHARE_AGGREGATED=false
 | `CORS_ORIGINS` | Comma-separated list of allowed frontend origins. |
 | `JOOBLE_API_KEY` | Required for the Jooble source (free key from jooble.org). |
 | `STALE_JOB_DAYS` | Aggregated jobs older than this are closed. |
+| `UPLOAD_DIR` | Folder for uploaded resumes (`uploads/resumes/`). Add it to `.gitignore`. On Render/Railway it is wiped on each deploy unless you attach a volume. |
+| `MAX_UPLOAD_MB` | Largest resume file accepted. |
+| `PUBLIC_BASE_URL` | Leave empty in development (same origin through the Vite proxy). Set to the API's public URL (for example `https://api.mysite.com`) when frontend and API are on different domains, so resume links work for employers. |
 | `TELEGRAM_SHARE_AGGREGATED` | Also share (up to 5 per source per run) aggregated jobs. Employer jobs are always shared when they go live. |
 
 `frontend\.env` (optional): `VITE_GOOGLE_CLIENT_ID=...` shows the Google button on login and job seeker sign-up.
@@ -220,7 +231,7 @@ On the frontend, `Protected` in `App.jsx` checks the role before a panel opens. 
 | `companies` | user_id (**NULL = unclaimed**, auto-created from aggregated jobs), name, website, description, logo_url, domain_verified |
 | `job_sources` | name, type (`api` / `rss` / `jooble`), endpoint, active |
 | `jobs` | title, company_name, company_id, location, workplace_type, job_type, job_category, openings, hiring_timeline, salary range / period / currency, description, apply_url, source_type (`aggregated` / `employer`), source_id, status (`pending` / `published` / `paused` / `closed` / `rejected`), **dedupe_hash** (unique) |
-| `applications` | job_id, user_id, status, cover_letter, resume_url, archived (unique per job + user) |
+| `applications` | job_id, user_id, status (`new`, `reviewing`, `shortlisted`, `contacting`, `interviewing`, `rejected`, `hired`), cover_letter, resume_url, archived (seeker's own archive), skipped (employer hid it) (unique per job + user) |
 | `saved_jobs` | job_id, user_id (unique per pair) |
 | `company_reviews` | company_id, user_id, rating 1–5, title, pros, cons |
 | `salary_reports` | company_id, job_title, base_salary, currency, period |
@@ -256,7 +267,20 @@ Interactive docs with every route: http://127.0.0.1:8000/docs
 | GET | `/api/auth/me` | Current user |
 | POST | `/api/auth/google` | Google sign-in |
 
-**Job seeker** (`/api/seeker/*`, `/api/messages`, `/api/notifications`) – dashboard, profile, applications, saved jobs, messages, notification counts. See `/docs`.
+**Job seeker** (`/api/seeker/*`, role `job_seeker`)
+
+| Method | Path | Description |
+|---|---|---|
+| GET / PUT | `/profile` | Read or replace the whole profile (summary, skills, experience, education, languages, certifications ...) |
+| POST | `/resume` | Upload a resume as multipart field `file`. PDF, PNG, JPG only, checked by content, max 5 MB |
+| DELETE | `/resume` | Remove the resume |
+| GET | `/dashboard`, `/applications`, `/summary` | Stats and application list |
+| POST | `/jobs/{id}/apply` | Apply to an employer job (uses the profile resume if none is sent) |
+| GET / POST / DELETE | `/saved`, `/saved/{id}` | Saved jobs |
+
+**Files** – `GET /api/files/resumes/{name}` serves uploaded resumes. Names are random and unguessable; there is no login check yet (see Known Notes).
+
+**Messages and notifications** (`/api/messages/*`, `/api/notifications/*`, any logged-in user) – one conversation per application; see `/docs`.
 
 **Employer** (`/api/employer/*`, role `employer`)
 
@@ -266,8 +290,9 @@ Interactive docs with every route: http://127.0.0.1:8000/docs
 | POST / GET | `/jobs` | Create / list own jobs |
 | GET / PUT / DELETE | `/jobs/{id}` | Read, edit, delete |
 | POST | `/jobs/{id}/status` | `pause`, `resume`, `close`, `reopen` |
-| GET | `/candidates` | Applicants with status counts; filters `job_id`, `status`, `q` |
-| PATCH | `/candidates/{id}` | Change status; notifies the applicant |
+| GET | `/candidates` | Applicants with skill-match score, matched / missing skills and tab counts. Filters `job_id`, `status`, `q`, `skipped`, `min_match`; `sort=match` (default) or `newest` |
+| PATCH | `/candidates/{id}` | Body `{status?, skipped?}`. Changing status notifies the applicant; skipping does not |
+| POST | `/candidates/bulk` | Body `{ids, action}` with action `shortlist`, `reject`, `skip` or `restore`. Only your own applications are touched |
 | GET / PUT | `/company` | Company profile |
 
 **Company reviews** – `POST /api/companies/{id}/reviews` (job seekers only, one per company).
@@ -315,6 +340,19 @@ Employer registers (company created) -> POST /api/employer/jobs
 
 ---
 
+## Skill matching
+
+`app/matching.py` scores each applicant against the job they applied to:
+
+1. Known skills (about 150, with spelling variants such as `React.js` = `react`) are found in the job title and description.
+2. The applicant's listed skills count fully; skills only mentioned in the summary or experience count 80%.
+3. Score = share of the job's skills the applicant has, plus up to 10 points when job titles resemble each other.
+4. 70% and up is a **top match**, 45% and up is a **good match**. Applicants with no skills on their profile show "No skills listed" instead of 0%.
+
+It is rule based, with no external AI service and no cost. To use an LLM later, replace `match_score()` and keep its return shape. Add new skills to `SKILLS` in the same file.
+
+---
+
 ## Migrations
 
 There is no Alembic. After pulling code that adds columns, run:
@@ -324,7 +362,7 @@ There is no Alembic. After pulling code that adds columns, run:
 .\venv\Scripts\python.exe -m app.migrate             # apply
 ```
 
-It creates missing tables, adds missing columns (with scalar defaults), makes `companies.user_id` nullable on PostgreSQL, and links old aggregated jobs to company pages.
+It creates missing tables (and adds `applications.skipped` after the screening update), adds missing columns (with scalar defaults), makes `companies.user_id` nullable on PostgreSQL, and links old aggregated jobs to company pages.
 
 ---
 
@@ -346,6 +384,8 @@ It creates missing tables, adds missing columns (with scalar defaults), makes `c
 - **Do not scrape LinkedIn or Indeed.** Use official APIs and feeds, and keep `apply_url` so visitors go back to the source.
 - The scheduler runs inside the web process; move it to a worker before running more than one instance.
 - `is_verified` and `domain_verified` are admin-set badges, not access gates.
+- **Resume files are stored on local disk and are reachable by anyone who has the random link** (employers get it in Candidates). Before launch move them to a private bucket with signed URLs by changing only `storage.py`.
+- Open one account per browser profile (or per tab if the token is kept in `sessionStorage`): tabs share `localStorage`, so logging in as a second user changes the token the other tabs send.
 - Passwords are limited to 72 characters (bcrypt).
 - `hero.mp4` in `frontend/public` is optional; the hero falls back to a gradient.
 
@@ -355,7 +395,12 @@ It creates missing tables, adds missing columns (with scalar defaults), makes `c
 
 | Problem | Fix |
 |---|---|
-| "You do not have permission" for employers or job seekers, admin works | `require_role` in `security.py` is checking more than the role (for example `is_verified`). Make it compare `user.role` only. |
+| "You do not have permission" for employers or job seekers, admin works | Several accounts are logged in in the same browser; they share one token. Log out, or use a separate browser profile / Incognito per account. |
+| Profile "Add your phone number" step shows no phone field | Fixed: the step now opens the Edit profile form (`/my/profile?focus=basics`). |
+| "Cannot reach the server" when saving the profile | Fixed: `ProfileIn` in `schemas.py` now includes summary, skills, experience, education, languages and certifications. Restart uvicorn after updating. |
+| `column applications.skipped does not exist` | Run `python -m app.migrate` once (also on the Neon database). |
+| Resume upload says "not a valid PDF" | The file content does not match its extension. Re-export the file instead of renaming it. |
+| An employer job is missing from search | Check the location box. A job in Islamabad does not match location "Remote" unless its workplace type is Remote. |
 | Messages page has no sidebar | Use the updated `App.jsx` (`RoleShell`) and `Seeker.jsx`. |
 | `ERR_CONNECTION_REFUSED` on port 8000 | Backend not running. Start uvicorn. |
 | `Could not import module "app.main"` | Run `.\venv\Scripts\python.exe -c "import app.main"` to see the real error. |

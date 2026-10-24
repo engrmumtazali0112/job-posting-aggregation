@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from .database import get_db
@@ -6,6 +6,7 @@ from .models import User, Job, Application, SavedJob, SeekerProfile, Company
 from .security import require_role
 from .schemas import ApplicationIn, ProfileIn, JobPublic
 from .services import notify
+from . import storage
 
 router = APIRouter(prefix="/api/seeker", tags=["seeker"], dependencies=[Depends(require_role("job_seeker"))])
 seeker = require_role("job_seeker")
@@ -41,6 +42,8 @@ def get_profile(user: User = Depends(seeker), db: Session = Depends(get_db)):
 @router.put("/profile")
 def update_profile(data: ProfileIn, user: User = Depends(seeker), db: Session = Depends(get_db)):
     p = profile_row(db, user)
+    if p.resume_url and p.resume_url != data.resume_url:
+        storage.delete_file(p.resume_url)           # replaced or removed: delete our old file
     user.full_name = (data.full_name or "").strip() or None
     for k in ("phone", "location", "visible", "resume_url", "resume_name", "min_pay", "min_pay_period",
               "relocation", "available_now"):
@@ -63,23 +66,45 @@ def update_profile(data: ProfileIn, user: User = Depends(seeker), db: Session = 
     return profile_out(user, p)
 
 
+# --- Resume upload (PDF / PNG / JPG, max settings.max_upload_mb) ---
+@router.post("/resume")
+def upload_resume(file: UploadFile = File(...), user: User = Depends(seeker), db: Session = Depends(get_db)):
+    p = profile_row(db, user)
+    url, name = storage.save_resume(file)            # raises 400/413 for bad files
+    storage.delete_file(p.resume_url)                # drop the previous upload, if any
+    p.resume_url, p.resume_name = url, name
+    db.commit()
+    return {"resume_url": url, "resume_name": name}
+
+
+@router.delete("/resume")
+def remove_resume(user: User = Depends(seeker), db: Session = Depends(get_db)):
+    p = profile_row(db, user)
+    storage.delete_file(p.resume_url)
+    p.resume_url = p.resume_name = None
+    db.commit()
+    return {"ok": True}
+
+
 # --- Dashboard ---
 GROUPS = {"new": "applied", "reviewing": "review", "contacting": "review",
-          "interviewing": "interview", "hired": "accepted", "rejected": "rejected"}
+          "shortlisted": "review", "interviewing": "interview", "hired": "accepted", "rejected": "rejected"}
 
 
 def completion(p: SeekerProfile) -> dict:
-    checks = [("Add your phone number and location", bool(p.phone and p.location)),
-              ("Write a short summary", bool(p.summary)),
-              ("Add your skills", bool(p.skills)),
-              ("Add your work experience", bool(p.experience)),
-              ("Add your education", bool(p.education)),
-              ("Add languages you speak", bool(p.languages)),
-              ("Add a resume link", bool(p.resume_url)),
-              ("Add the job titles you want", bool(p.job_titles))]
-    done = [c for c, ok in checks if ok]
+    # key = which part of the profile page the step opens (see Seeker.jsx, Profile)
+    checks = [("basics", "Add your phone number and location", bool(p.phone and p.location)),
+              ("summary", "Write a short summary", bool(p.summary)),
+              ("skills", "Add your skills", bool(p.skills)),
+              ("experience", "Add your work experience", bool(p.experience)),
+              ("education", "Add your education", bool(p.education)),
+              ("languages", "Add languages you speak", bool(p.languages)),
+              ("resume", "Add your resume (PDF, PNG or JPG)", bool(p.resume_url)),
+              ("titles", "Add the job titles you want", bool(p.job_titles))]
+    done = [c for _, c, ok in checks if ok]
     return {"percent": round(100 * len(done) / len(checks)), "done": done,
-            "next": [c for c, ok in checks if not ok]}
+            "next": [c for _, c, ok in checks if not ok],
+            "steps": [{"key": k, "label": c, "done": ok} for k, c, ok in checks]}
 
 
 @router.get("/dashboard")
@@ -154,7 +179,9 @@ def apply_to_job(job_id: int, data: ApplicationIn, user: User = Depends(seeker),
         raise HTTPException(400, "This job is hosted on another website. Use the Apply now link.")
     if db.scalar(select(Application).where(Application.job_id == job_id, Application.user_id == user.id)):
         raise HTTPException(409, "You have already applied to this job")
-    db.add(Application(job_id=job_id, user_id=user.id, cover_letter=data.cover_letter, resume_url=data.resume_url))
+    prof = db.scalar(select(SeekerProfile).where(SeekerProfile.user_id == user.id))
+    resume = data.resume_url or (prof.resume_url if prof else None)       # fall back to the profile resume
+    db.add(Application(job_id=job_id, user_id=user.id, cover_letter=data.cover_letter, resume_url=resume))
     company = db.get(Company, job.company_id) if job.company_id else None
     if company and company.user_id:
         notify(db, company.user_id, f"{user.full_name or user.email} applied to {job.title}.",

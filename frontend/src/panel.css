@@ -190,3 +190,30 @@
   .ap-sub { font-size: 15px; }
   .ap-foot { justify-content: center; text-align: center; }
 }
+
+/* ================= clickable dashboard cards, profile focus, candidate screening (added) ================= */
+.stat-link { display: block; color: inherit; text-decoration: none; border-radius: 16px; }
+.stat-link > * { height: 100%; transition: border-color .15s, box-shadow .15s, transform .15s; }
+.stat-link:hover > *, .stat-link:focus-visible > * { border-color: var(--p, #2557a7); box-shadow: 0 6px 18px rgba(16,24,40,.10); transform: translateY(-1px); }
+.stat-link:focus-visible { outline: 2px solid var(--p, #2557a7); outline-offset: 2px; }
+a.sk-statlink { color: inherit; text-decoration: none; transition: border-color .15s, box-shadow .15s, transform .15s; }
+a.sk-statlink:hover { border-color: #5584a8; box-shadow: 0 6px 18px rgba(16,24,40,.10); transform: translateY(-1px); }
+a.sk-linelink { color: inherit; text-decoration: none; border-radius: 8px; padding-left: 6px; padding-right: 6px; }
+a.sk-linelink:hover { background: #f3f5f8; }
+@keyframes skflash { 0%, 100% { box-shadow: 0 0 0 0 rgba(85,132,168,0); } 25% { box-shadow: 0 0 0 5px rgba(85,132,168,.45); } }
+.sk-flash { animation: skflash 1.8s ease; }
+
+.s-shortlisted { background: #e0ecff; color: #1d4ed8; }
+.match { display: inline-block; font-size: 13px; font-weight: 800; padding: 5px 12px; border-radius: 999px; white-space: nowrap; }
+.m-top { background: #dcf5e4; color: #14702f; } .m-good { background: #fff1cc; color: #8a5a00; }
+.m-low { background: #eef1f4; color: #5b6673; } .m-none { background: #f3f4f6; color: #8793a3; font-weight: 600; }
+.cand-top { border-color: #2e9b4c; background: #f5fbf7; box-shadow: 0 0 0 1px #2e9b4c inset; }
+.cand-quick { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 20px 14px 52px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.chips.big { margin-top: 8px; }
+.chip { font-style: normal; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: #eef2f7; color: #34506f; }
+.chip.ok { background: #dcf5e4; color: #14702f; }
+.chip.miss { background: #fff; color: #8793a3; border: 1px dashed #c5ccd6; }
+.top-banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.bulkbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+@media (max-width: 640px) { .cand-quick { padding-left: 20px; } }

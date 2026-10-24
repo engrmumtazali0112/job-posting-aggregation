@@ -71,6 +71,31 @@ class ReviewOut(ReviewIn):
     created_at: datetime
     model_config = {"from_attributes": True}
 
+class _Item(BaseModel):
+    model_config = {"coerce_numbers_to_str": True, "str_strip_whitespace": True}
+
+class ExperienceItem(_Item):
+    title: str | None = Field(default=None, max_length=150)
+    company: str | None = Field(default=None, max_length=150)
+    start: str | None = Field(default=None, max_length=20)
+    end: str | None = Field(default=None, max_length=20)
+    current: bool = False
+    description: str | None = Field(default=None, max_length=1500)
+
+class EducationItem(_Item):
+    degree: str | None = Field(default=None, max_length=150)
+    institution: str | None = Field(default=None, max_length=150)
+    year: str | None = Field(default=None, max_length=20)
+
+class LanguageItem(_Item):
+    language: str | None = Field(default=None, max_length=150)
+    level: str | None = Field(default=None, max_length=150)
+
+class CertificationItem(_Item):
+    name: str | None = Field(default=None, max_length=150)
+    issuer: str | None = Field(default=None, max_length=150)
+    year: str | None = Field(default=None, max_length=20)
+
 class ProfileIn(BaseModel):
     full_name: str | None = Field(default=None, max_length=150)
     phone: str | None = Field(default=None, max_length=40)
@@ -84,6 +109,13 @@ class ProfileIn(BaseModel):
     min_pay_period: SalaryPeriod = "month"
     relocation: str | None = Field(default=None, max_length=100)
     available_now: bool = False
+    # sections edited on the profile page (the page always sends the whole profile)
+    summary: str | None = Field(default=None, max_length=2000)
+    skills: list[str] = Field(default_factory=list, max_length=40)
+    experience: list[ExperienceItem] = Field(default_factory=list, max_length=30)
+    education: list[EducationItem] = Field(default_factory=list, max_length=30)
+    languages: list[LanguageItem] = Field(default_factory=list, max_length=30)
+    certifications: list[CertificationItem] = Field(default_factory=list, max_length=30)
 
 class MessageIn(BaseModel):
     body: str = Field(min_length=1, max_length=3000)

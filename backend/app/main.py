@@ -1,5 +1,7 @@
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException, Response
+﻿from contextlib import asynccontextmanager
+from fastapi import FastAPI, Depends, HTTPException, Response, Request
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, or_, func
 from sqlalchemy.orm import Session
@@ -7,6 +9,7 @@ from .config import settings
 from .database import Base, engine, get_db
 from .models import Job
 from .schemas import JobPublic
+from . import storage
 from . import (routes_auth, routes_google_auth, routes_employer, routes_admin, routes_seeker, routes_company,
                routes_notifications, routes_messages, routes_home, scheduler)
 
@@ -21,6 +24,14 @@ async def lifespan(app):
 app = FastAPI(title="Job Platform API", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in settings.cors_origins.split(",")],
                    allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Total-Count"])
+
+@app.exception_handler(Exception)
+async def unhandled(request: Request, exc: Exception):
+    print("[error]", request.method, request.url.path, repr(exc))
+    return JSONResponse({"detail": "Something went wrong on the server. Please try again."}, status_code=500)
+
+# uploaded resumes (temporary local storage, see storage.py)
+app.mount("/api/files", StaticFiles(directory=storage.UPLOAD_ROOT), name="files")
 
 app.include_router(routes_auth.router)
 app.include_router(routes_google_auth.router)
@@ -45,7 +56,10 @@ def list_jobs(response: Response, q: str = "", location: str = "", source: str =
         like = f"%{q}%"
         stmt = stmt.where(or_(Job.title.ilike(like), Job.company_name.ilike(like), Job.description.ilike(like)))
     if location:
-        stmt = stmt.where(Job.location.ilike(f"%{location}%"))
+        if location.strip().lower() == "remote":      # "Remote" also matches jobs flagged remote with a city set
+            stmt = stmt.where(or_(Job.location.ilike("%remote%"), Job.workplace_type == "remote"))
+        else:
+            stmt = stmt.where(Job.location.ilike(f"%{location}%"))
     if source in ("aggregated", "employer"):
         stmt = stmt.where(Job.source_type == source)
     if job_type:
