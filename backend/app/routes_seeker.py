@@ -25,6 +25,7 @@ def profile_row(db: Session, user: User) -> SeekerProfile:
 def profile_out(user: User, p: SeekerProfile) -> dict:
     return {"id": user.id, "email": user.email, "full_name": user.full_name, "phone": p.phone, "location": p.location,
             "visible": bool(p.visible), "resume_url": p.resume_url, "resume_name": p.resume_name,
+            "resume_state": storage.resume_state(p.resume_url, p.resume_text),
             "job_titles": p.job_titles or [], "job_types": p.job_types or [], "min_pay": p.min_pay,
             "min_pay_period": p.min_pay_period or "month", "relocation": p.relocation,
             "available_now": bool(p.available_now), "summary": p.summary, "skills": p.skills or [],
@@ -44,6 +45,7 @@ def update_profile(data: ProfileIn, user: User = Depends(seeker), db: Session = 
     p = profile_row(db, user)
     if p.resume_url and p.resume_url != data.resume_url:
         storage.delete_file(p.resume_url)           # replaced or removed: delete our old file
+        p.resume_text = None
     user.full_name = (data.full_name or "").strip() or None
     for k in ("phone", "location", "visible", "resume_url", "resume_name", "min_pay", "min_pay_period",
               "relocation", "available_now"):
@@ -73,15 +75,17 @@ def upload_resume(file: UploadFile = File(...), user: User = Depends(seeker), db
     url, name = storage.save_resume(file)            # raises 400/413 for bad files
     storage.delete_file(p.resume_url)                # drop the previous upload, if any
     p.resume_url, p.resume_name = url, name
+    p.resume_text = storage.extract_text(url)        # the text employers' job matching is based on
     db.commit()
-    return {"resume_url": url, "resume_name": name}
+    return {"resume_url": url, "resume_name": name, "readable": bool(p.resume_text),
+            "words": len(p.resume_text.split()), "state": storage.resume_state(url, p.resume_text)}
 
 
 @router.delete("/resume")
 def remove_resume(user: User = Depends(seeker), db: Session = Depends(get_db)):
     p = profile_row(db, user)
     storage.delete_file(p.resume_url)
-    p.resume_url = p.resume_name = None
+    p.resume_url = p.resume_name = p.resume_text = None
     db.commit()
     return {"ok": True}
 
@@ -170,6 +174,41 @@ def withdraw_application(app_id: int, user: User = Depends(seeker), db: Session 
     return {"ok": True}
 
 
+def check_answers(job: Job, given) -> list[dict]:
+    """Validate the answers to the job's screening questions and return the snapshot stored on the application."""
+    questions = job.questions or []
+    if not questions:
+        return []
+    by_id = {a.id: (a.answer or "").strip() for a in given}
+    required = [q for q in questions if q.get("required", True)]
+    if required and not by_id:
+        raise HTTPException(422, "This employer asks screening questions. Open the job page and use the \"Answer questions & apply\" button.")
+    out = []
+    for q in questions:
+        ans = by_id.get(q["id"], "")
+        if not ans:
+            if q.get("required", True):
+                raise HTTPException(422, f'Please answer: {q["text"]}')
+            continue
+        t = q["type"]
+        if t == "yes_no":
+            if ans.lower() not in ("yes", "no"):
+                raise HTTPException(422, f'Answer Yes or No: {q["text"]}')
+            ans = ans.title()
+        elif t == "number":
+            try:
+                float(ans.replace(",", ""))
+            except ValueError:
+                raise HTTPException(422, f'Please enter a number: {q["text"]}')
+        elif t == "choice" and ans not in q.get("options", []):
+            raise HTTPException(422, f'Please choose one of the options: {q["text"]}')
+        item = {"id": q["id"], "question": q["text"], "type": t, "answer": ans[:500]}
+        if t == "yes_no" and q.get("ideal"):
+            item["ok"] = ans.lower() == q["ideal"]
+        out.append(item)
+    return out
+
+
 @router.post("/jobs/{job_id}/apply")
 def apply_to_job(job_id: int, data: ApplicationIn, user: User = Depends(seeker), db: Session = Depends(get_db)):
     job = db.get(Job, job_id)
@@ -179,9 +218,12 @@ def apply_to_job(job_id: int, data: ApplicationIn, user: User = Depends(seeker),
         raise HTTPException(400, "This job is hosted on another website. Use the Apply now link.")
     if db.scalar(select(Application).where(Application.job_id == job_id, Application.user_id == user.id)):
         raise HTTPException(409, "You have already applied to this job")
+    answers = check_answers(job, data.answers)
     prof = db.scalar(select(SeekerProfile).where(SeekerProfile.user_id == user.id))
     resume = data.resume_url or (prof.resume_url if prof else None)       # fall back to the profile resume
-    db.add(Application(job_id=job_id, user_id=user.id, cover_letter=data.cover_letter, resume_url=resume))
+    resume_text = prof.resume_text if (prof and resume and resume == prof.resume_url) else None
+    db.add(Application(job_id=job_id, user_id=user.id, cover_letter=data.cover_letter, resume_url=resume,
+                       resume_text=resume_text, answers=answers or None))
     company = db.get(Company, job.company_id) if job.company_id else None
     if company and company.user_id:
         notify(db, company.user_id, f"{user.full_name or user.email} applied to {job.title}.",

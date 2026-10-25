@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react'
-import { Link, NavLink, Outlet, Route, Routes, Navigate, useLocation } from 'react-router-dom'
+import { Link, NavLink, Outlet, Route, Routes, Navigate, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from './auth.jsx'
+import { api } from './api'
 import Icon from './components/Icon.jsx'
 import { useOutside } from './components/ui.jsx'
 import Home from './pages/Home.jsx'
@@ -9,7 +10,9 @@ import JobDetail from './pages/JobDetail.jsx'
 import Company from './pages/Company.jsx'
 import CompanySearch from './pages/CompanySearch.jsx'
 import { Login, Register } from './pages/Auth.jsx'
-import { Notifications, Messages } from './pages/Inbox.jsx'
+import { Notifications } from './pages/Inbox.jsx'
+import Messages from './pages/Messages.jsx'
+import Apply from './pages/Apply.jsx'
 import * as E from './pages/Employer.jsx'
 import * as A from './pages/Admin.jsx'
 import * as S from './pages/Seeker.jsx'
@@ -124,6 +127,24 @@ function RoleShell() {
   return <Outlet />
 }
 
+// Jobs with application questions: show a clear "Answer questions & apply" button above the job page.
+function JobDetailGate() {
+  const { id } = useParams(); const { user } = useAuth()
+  const [job, setJob] = useState(null)
+  useEffect(() => { api('/jobs/' + id).then(setJob).catch(() => setJob(null)) }, [id])
+  const n = job?.questions?.length || 0
+  return (
+    <>
+      {user?.role === 'job_seeker' && job?.source_type === 'employer' && n > 0 && (
+        <div className="wrap"><div className="card apply-banner">
+          <div><strong>This employer has {n} question{n === 1 ? '' : 's'} for applicants.</strong><div className="muted">Answer them to send your application.</div></div>
+          <Link to={`/jobs/${id}/apply`} className="btn btn-primary">Answer questions &amp; apply</Link>
+        </div></div>)}
+      <JobDetail />
+    </>
+  )
+}
+
 function ScrollTop() {
   const { pathname } = useLocation()
   useEffect(() => {
@@ -144,7 +165,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/jobs" element={<Jobs />} />
-          <Route path="/jobs/:id" element={<JobDetail />} />
+          <Route path="/jobs/:id" element={<JobDetailGate />} />
+          <Route path="/jobs/:id/apply" element={<Protected role="job_seeker"><Apply /></Protected>} />
           <Route path="/companies" element={<CompanySearch />} />
           <Route path="/companies/:id" element={<Company />} />
           <Route path="/login" element={<Login />} />

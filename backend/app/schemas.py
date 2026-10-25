@@ -1,11 +1,46 @@
 from datetime import datetime
 from typing import Literal
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 WorkplaceType = Literal["in_person", "remote", "hybrid"]
 JobType = Literal["full_time", "part_time", "contract", "fresher", "temporary", "internship"]
 SalaryPeriod = Literal["hour", "day", "week", "month", "year"]
 JobCategory = Literal["private", "government", "contract", "ngo"]
+
+QuestionType = Literal["yes_no", "text", "number", "choice"]
+
+class QuestionIn(BaseModel):
+    """A screening question the employer adds to a job post."""
+    text: str = Field(min_length=3, max_length=200)
+    type: QuestionType = "text"
+    required: bool = True
+    options: list[str] = Field(default_factory=list, max_length=8)          # only for type "choice"
+    ideal: Literal["yes", "no"] | None = None                                # only for yes_no: the answer the employer hopes for
+
+    @model_validator(mode="after")
+    def tidy(self):
+        self.text = self.text.strip()
+        opts = [o.strip()[:80] for o in self.options if o.strip()]
+        if self.type == "choice" and len(opts) < 2:
+            raise ValueError("A multiple-choice question needs at least 2 options")
+        self.options = opts if self.type == "choice" else []
+        if self.type != "yes_no":
+            self.ideal = None
+        return self
+
+class QuestionPublic(BaseModel):
+    id: str
+    text: str
+    type: str
+    required: bool = True
+    options: list[str] = []
+
+class QuestionFull(QuestionPublic):
+    ideal: str | None = None          # employer / admin only
+
+class AnswerIn(BaseModel):
+    id: str = Field(max_length=20)
+    answer: str = Field(default="", max_length=500)
 
 class JobIn(BaseModel):
     title: str = Field(min_length=3, max_length=255)
@@ -20,6 +55,7 @@ class JobIn(BaseModel):
     salary_period: SalaryPeriod = "month"
     description: str = Field(min_length=20)
     apply_url: str | None = Field(default=None, max_length=500)
+    questions: list[QuestionIn] | None = Field(default=None, max_length=10)   # None = leave the job's questions as they are
 
     @model_validator(mode="after")
     def check_pay(self):
@@ -45,12 +81,19 @@ class JobPublic(BaseModel):
     source_type: str
     company_id: int | None = None
     created_at: datetime
+    questions: list[QuestionPublic] = []
     model_config = {"from_attributes": True}
+
+    @field_validator("questions", mode="before")
+    @classmethod
+    def no_questions(cls, v):
+        return v or []
 
 class JobFull(JobPublic):
     hiring_timeline: str | None
     status: str
     updated_at: datetime | None
+    questions: list[QuestionFull] = []
 
 class EmployerJobOut(JobFull):
     applications_count: int = 0
@@ -58,6 +101,7 @@ class EmployerJobOut(JobFull):
 class ApplicationIn(BaseModel):
     cover_letter: str | None = Field(default=None, max_length=5000)
     resume_url: str | None = Field(default=None, max_length=500)
+    answers: list[AnswerIn] = Field(default_factory=list, max_length=10)
 
 class ReviewIn(BaseModel):
     rating: int = Field(ge=1, le=5)

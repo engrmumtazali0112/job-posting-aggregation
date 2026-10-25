@@ -325,8 +325,16 @@ async function uploadResume(file) {
   return data
 }
 
+const RESUME_HINT = {
+  ok: ['ok', 'Your resume text is readable. Employers see how well it matches each job you apply to.'],
+  image: ['warn', 'This is an image, so its text cannot be read for job matching. Upload a PDF for the best results.'],
+  scanned: ['warn', 'This PDF looks scanned, so its text cannot be read. Upload a text-based PDF for job matching.'],
+  link: ['warn', 'Links cannot be read for job matching. Upload your resume as a PDF to be matched against jobs.'],
+  missing: ['warn', 'The resume file is missing on the server. Please upload it again.'],
+}
 function ResumeSection({ p, save }) {
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('')
+  const hint = p.resume_url ? RESUME_HINT[p.resume_state] : null
   const isLink = p.resume_url && !p.resume_url.includes('/api/files/')
   const d = useDraft({ resume_url: '', resume_name: '' }, (v) => save({ resume_url: v.resume_url.trim(), resume_name: v.resume_name.trim() }))
   const pick = async (e) => {
@@ -347,6 +355,7 @@ function ResumeSection({ p, save }) {
     <div id="sec-resume" className="card pad-card sk-sec">
       <div className="sk-split"><div><h3>Resume / CV</h3><p className="muted">Upload a PDF, PNG or JPG (max {RESUME_MAX_MB} MB), or paste a link.</p></div></div>
       {p.resume_url && <a className="link" href={p.resume_url} target="_blank" rel="noopener noreferrer">{p.resume_name || 'View resume'} ↗</a>}
+      {hint && <div className={'alert ' + (hint[0] === 'ok' ? 'ok' : 'warn')}>{hint[1]}</div>}
       <div className="acts">
         <label className="btn btn-primary sm" style={{ cursor: busy ? 'wait' : 'pointer' }}>
           {busy ? 'Working…' : p.resume_url && !isLink ? 'Replace file' : 'Upload file'}

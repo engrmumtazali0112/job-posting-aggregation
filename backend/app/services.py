@@ -25,6 +25,9 @@ def resolve_location(data: JobIn) -> str:
         return "Remote"
     return loc
 
+def build_questions(items) -> list[dict]:
+    return [{"id": f"q{i + 1}", **q.model_dump()} for i, q in enumerate(items)]
+
 def apply_job_fields(job: Job, data: JobIn) -> None:
     job.title = data.title.strip()
     job.workplace_type = data.workplace_type
@@ -38,6 +41,8 @@ def apply_job_fields(job: Job, data: JobIn) -> None:
     job.salary_period = data.salary_period
     job.description = data.description
     job.apply_url = data.apply_url or None
+    if data.questions is not None:
+        job.questions = build_questions(data.questions)
 
 def delete_jobs(db: Session, ids: list[int]) -> int:
     if not ids:
