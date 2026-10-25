@@ -1,6 +1,8 @@
+import re
 from datetime import datetime
 from typing import Literal
-from pydantic import BaseModel, Field, field_validator, model_validator
+from urllib.parse import urlparse
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 WorkplaceType = Literal["in_person", "remote", "hybrid"]
 JobType = Literal["full_time", "part_time", "contract", "fresher", "temporary", "internship"]
@@ -63,7 +65,9 @@ class JobIn(BaseModel):
             raise ValueError("Minimum pay cannot be higher than maximum pay")
         return self
 
-class JobPublic(BaseModel):
+class _JobBase(BaseModel):
+    """Fields shared by the public and the employer/admin job views. `questions` is declared in each subclass
+    (QuestionPublic vs QuestionFull): redeclaring it in a subclass of JobPublic is an invariant list override."""
     id: int
     title: str
     company_name: str
@@ -81,19 +85,21 @@ class JobPublic(BaseModel):
     source_type: str
     company_id: int | None = None
     created_at: datetime
-    questions: list[QuestionPublic] = []
     model_config = {"from_attributes": True}
 
-    @field_validator("questions", mode="before")
+    @field_validator("questions", mode="before", check_fields=False)     # `questions` lives on the subclasses
     @classmethod
     def no_questions(cls, v):
         return v or []
 
-class JobFull(JobPublic):
+class JobPublic(_JobBase):
+    questions: list[QuestionPublic] = []                  # public view: no `ideal` answers
+
+class JobFull(_JobBase):
+    questions: list[QuestionFull] = []                    # employer / admin view: includes `ideal`
     hiring_timeline: str | None
     status: str
     updated_at: datetime | None
-    questions: list[QuestionFull] = []
 
 class EmployerJobOut(JobFull):
     applications_count: int = 0
@@ -140,6 +146,31 @@ class CertificationItem(_Item):
     issuer: str | None = Field(default=None, max_length=150)
     year: str | None = Field(default=None, max_length=20)
 
+class ProjectItem(_Item):
+    name: str | None = Field(default=None, max_length=150)
+    description: str | None = Field(default=None, max_length=1500)
+    tech_stack: list[str] = Field(default_factory=list, max_length=20)
+    url: str | None = Field(default=None, max_length=300)
+
+    @field_validator("url", mode="before")
+    @classmethod
+    def safe_url(cls, v):                             # rendered as a link: only http(s) is allowed (blocks javascript: links)
+        v = v.strip() if isinstance(v, str) else v
+        if not v:
+            return None
+        if not re.match(r"^https?://", v, re.I):
+            v = "https://" + v
+        if "." not in (urlparse(v).hostname or ""):
+            raise ValueError("Enter a valid project link")
+        return v[:300]
+
+    @field_validator("tech_stack", mode="before")
+    @classmethod
+    def split_stack(cls, v):
+        if isinstance(v, str):                       # the profile form sends "Python, React"
+            v = v.split(",")
+        return [str(s).strip()[:40] for s in (v or []) if str(s).strip()][:20]
+
 class ProfileIn(BaseModel):
     full_name: str | None = Field(default=None, max_length=150)
     phone: str | None = Field(default=None, max_length=40)
@@ -160,6 +191,47 @@ class ProfileIn(BaseModel):
     education: list[EducationItem] = Field(default_factory=list, max_length=30)
     languages: list[LanguageItem] = Field(default_factory=list, max_length=30)
     certifications: list[CertificationItem] = Field(default_factory=list, max_length=30)
+    # proof of work: employers check these against the job (see real_match.py)
+    linkedin_url: str | None = Field(default=None, max_length=300)
+    github_url: str | None = Field(default=None, max_length=300)
+    portfolio_url: str | None = Field(default=None, max_length=300)
+    projects: list[ProjectItem] = Field(default_factory=list, max_length=20)
+
+    @field_validator("linkedin_url", "github_url", "portfolio_url", mode="before")
+    @classmethod
+    def clean_link(cls, v, info):
+        v = v.strip() if isinstance(v, str) else v
+        if not v:
+            return None
+        if not re.match(r"^https?://", v, re.I):
+            v = "https://" + v
+        host = (urlparse(v).hostname or "").lower()
+        need = {"linkedin_url": "linkedin.com", "github_url": "github.com"}.get(info.field_name)
+        if need and not (host == need or host.endswith("." + need)):
+            raise ValueError(f"Enter a link on {need}")
+        if "." not in host:
+            raise ValueError("Enter a valid link")
+        return v[:300]
 
 class MessageIn(BaseModel):
     body: str = Field(min_length=1, max_length=3000)
+
+# --- forgot / reset password ---
+def check_password_strength(v: str) -> str:
+    if len(v.encode()) > 72:                                   # bcrypt only uses the first 72 bytes
+        raise ValueError("Password is too long")
+    if not re.search(r"[A-Za-z]", v) or not re.search(r"\d", v):
+        raise ValueError("Password must contain at least one letter and one number")
+    return v
+
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+class ResetPasswordIn(BaseModel):
+    token: str = Field(min_length=10, max_length=200)
+    password: str = Field(min_length=8, max_length=72)
+
+    @field_validator("password")
+    @classmethod
+    def strong_enough(cls, v: str) -> str:
+        return check_password_strength(v)

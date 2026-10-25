@@ -216,21 +216,55 @@ const RESUME_NOTE = {
   none: 'No resume uploaded', link: 'Resume is a link, so it cannot be read', image: 'Image resume: text cannot be read (a PDF is best)',
   scanned: 'Scanned PDF: text cannot be read', missing: 'Resume file is missing', ok: 'Resume has no matching skills',
 }
+// Real Match = 30% written resume/profile + 40% public GitHub repos + 30% LinkedIn/portfolio (see backend real_match.py)
 function MatchBadge({ c }) {
-  if (!c.match_scored) return <span className="match m-none" title={RESUME_NOTE[c.resume_state]}>No readable resume</span>
+  const r = c.real_match || {}
+  if (!c.match_scored && !r.has_proof) return <span className="match m-none" title={RESUME_NOTE[c.resume_state]}>No readable resume</span>
   const fromProfile = c.match_source === 'profile'
-  return <span className={'match m-' + c.match_level} title={fromProfile ? 'Resume could not be read (' + (RESUME_NOTE[c.resume_state] || '') + '), so this score uses the skills on the applicant profile' : "Share of the job's skills found in the applicant's resume"}>{c.match_level === 'top' ? '★ ' : ''}{c.match}% match{fromProfile ? ' *' : ''}</span>
+  const tip = `Real Match = resume/profile ${r.resume_part ?? 0}% (30%) + GitHub ${r.github_part ?? 0}% (40%) + LinkedIn/portfolio ${r.links_part ?? 0}% (30%)`
+    + (fromProfile ? '. Resume could not be read, so profile skills were used.' : '')
+  return <span className={'match m-' + c.real_match_level} title={tip}>{c.real_match_level === 'top' ? '★ ' : ''}{c.real_match_score}% Real Match{fromProfile ? ' *' : ''}</span>
 }
-const Chips = ({ ok = [], miss = [], max = 5 }) => (ok.length || miss.length) ? (
-  <span className="chips">
-    {ok.slice(0, max).map((t) => <i key={'o' + t} className="chip ok">{t}</i>)}
-    {miss.slice(0, 3).map((t) => <i key={'m' + t} className="chip miss" title="Required by the job, not on the profile">{t}</i>)}
-  </span>) : null
+const TICK = { color: '#15803d', fontWeight: 700 }
+// skills seen in the candidate's real public GitHub repos (or on their portfolio) get a green check; the rest were only written
+function Chips({ ok = [], miss = [], gh = [], site = [], max = 6 }) {
+  const proven = [...new Set([...gh, ...site])]
+  const written = ok.filter((t) => !proven.includes(t))
+  if (!proven.length && !written.length && !miss.length) return null
+  return (
+    <span className="chips">
+      {proven.slice(0, max).map((t) => <i key={'v' + t} className="chip ok" title={gh.includes(t) ? 'Verified on GitHub' : 'Found on portfolio site'}><span style={TICK}>✓</span> {t}</i>)}
+      {written.slice(0, Math.max(0, max - proven.length)).map((t) => <i key={'o' + t} className="chip ok" title="Written on the resume or profile only, not verified">{t}</i>)}
+      {miss.slice(0, 3).map((t) => <i key={'m' + t} className="chip miss" title="Required by the job, not found">{t}</i>)}
+    </span>)
+}
+const GH_NOTE = { not_found: 'GitHub profile not found', rate_limited: 'GitHub is busy right now (rate limit), try again later', unreachable: 'GitHub could not be reached', invalid: 'Not a valid GitHub profile link' }
+const PF_NOTE = { blocked: 'link is not allowed', unreachable: 'site could not be opened', empty: 'site has no readable text (it may need JavaScript)' }
+function RealBreakdown({ c }) {
+  const r = c.real_match
+  if (!r || r.score === undefined) return null
+  const gh = r.github || {}
+  const ghText = gh.state === 'ok' ? `@${gh.username}: ${gh.repos} own repos${gh.languages?.length ? ', mostly ' + gh.languages.join(', ') : ''}` : c.github_url ? (GH_NOTE[gh.state] || 'not checked') : 'no GitHub link'
+  const pfText = !c.portfolio_url ? 'no portfolio link' : r.portfolio_state === 'ok' ? 'site checked' : (PF_NOTE[r.portfolio_state] || 'not checked')
+  const link = (u, l) => <a key={l} className="link" href={u} target="_blank" rel="noopener noreferrer">{l} ↗</a>
+  return (
+    <div><strong>Real Match: {r.score}%</strong>
+      <ul className="qa">
+        <li><span className="muted">Written resume and profile (30%)</span><b>{r.resume_part}%</b></li>
+        <li><span className="muted">GitHub, real repos (40%)</span><b>{r.github_part}% · {ghText}</b></li>
+        <li><span className="muted">LinkedIn and portfolio (30%)</span><b>{r.links_part}% · LinkedIn {r.linkedin_ok ? 'link looks valid (its content cannot be read)' : 'not provided'} · {pfText}</b></li>
+      </ul>
+      {r.portfolio_verified?.length > 0 && <div className="muted small">Found on portfolio: {r.portfolio_verified.join(', ')}</div>}
+      <div className="cand-links" style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+        {c.github_url && link(c.github_url, 'GitHub')}{c.linkedin_url && link(c.linkedin_url, 'LinkedIn')}{c.portfolio_url && link(c.portfolio_url, 'Portfolio')}
+      </div>
+    </div>)
+}
 
 export function Candidates() {
   const nav = useNavigate(); const [sp] = useSearchParams()
   const [jobId, setJobId] = useState(sp.get('job') || ''); const [status, setStatus] = useState(sp.get('status') || '')
-  const [minMatch, setMinMatch] = useState(sp.get('min') || ''); const [sort, setSort] = useState('match'); const [q, setQ] = useState('')
+  const [minMatch, setMinMatch] = useState(sp.get('min') || ''); const [sort, setSort] = useState('real'); const [q, setQ] = useState('')
   const [data, setData] = useState(null); const [jobs, setJobs] = useState([]); const [open, setOpen] = useState(null)
   const [note, setNote] = useState(''); const [info, setInfo] = useState(''); const [sel, setSel] = useState([])
   const skippedTab = status === 'skipped'
@@ -262,12 +296,12 @@ export function Candidates() {
   const toggleSel = (id) => setSel((x) => (x.includes(id) ? x.filter((i) => i !== id) : [...x, id]))
   const items = data?.items || []
   const allOn = items.length > 0 && sel.length === items.length
-  const topIds = items.filter((c) => c.match_level === 'top' && ['new', 'reviewing'].includes(c.status)).map((c) => c.id)
+  const topIds = items.filter((c) => c.real_match_level === 'top' && ['new', 'reviewing'].includes(c.status)).map((c) => c.id)
 
   return (
     <>
       <h1 className="page-title">Candidates</h1>
-      <p className="muted" style={{ marginBottom: 12 }}>Applicants are ranked by how well their resume matches the job post. Shortlist the best, reject or skip the rest.</p>
+      <p className="muted" style={{ marginBottom: 12 }}>Applicants are ranked by Real Match: their written resume, plus proof from their public GitHub, LinkedIn and portfolio. Shortlist the best, reject or skip the rest.</p>
       <div className="tabs">
         <button className={status === '' ? 'on' : ''} onClick={() => setStatus('')}>all {data ? `(${data.counts.all})` : ''}</button>
         {CSTAT.map((s) => <button key={s} className={status === s ? 'on' : ''} onClick={() => setStatus(s)}>{s} {data ? `(${data.counts[s]})` : ''}</button>)}
@@ -276,8 +310,8 @@ export function Candidates() {
       <form className="toolbar" onSubmit={(e) => { e.preventDefault(); load() }}>
         <input placeholder="Search name, email or job" value={q} onChange={(e) => setQ(e.target.value)} />
         <select value={jobId} onChange={(e) => setJobId(e.target.value)}><option value="">All jobs</option>{jobs.map((j) => <option key={j.id} value={j.id}>{j.title}</option>)}</select>
-        <select value={minMatch} onChange={(e) => setMinMatch(e.target.value)} title="Hide weak matches"><option value="">Any match</option><option value="45">45% and up</option><option value="70">70% and up</option></select>
-        <select value={sort} onChange={(e) => setSort(e.target.value)}><option value="match">Best match first</option><option value="newest">Newest first</option></select>
+        <select value={minMatch} onChange={(e) => setMinMatch(e.target.value)} title="Hide weak Real Match scores"><option value="">Any match</option><option value="45">45% and up</option><option value="70">70% and up</option></select>
+        <select value={sort} onChange={(e) => setSort(e.target.value)}><option value="real">Best Real Match first</option><option value="match">Best resume match first</option><option value="newest">Newest first</option></select>
         <button className="btn btn-outline sm">Search</button>
       </form>
       {note && <div className="alert">{note}</div>}
@@ -303,13 +337,14 @@ export function Candidates() {
         : items.map((c) => {
           const next = NEXT[c.status]
           return (
-            <div className={'card cand' + (c.match_level === 'top' && !c.skipped ? ' cand-top' : '')} key={c.id}>
+            <div className={'card cand' + (c.real_match_level === 'top' && !c.skipped ? ' cand-top' : '')} key={c.id}>
               <div className="row nob">
                 <input type="checkbox" checked={sel.includes(c.id)} onChange={() => toggleSel(c.id)} aria-label={'Select ' + nameOf(c)} />
                 <div className="grow" onClick={() => toggle(c)} style={{ cursor: 'pointer' }}>
                   <strong>{nameOf(c)}</strong>
                   <span className="muted">{c.job_title}{c.applicant_title ? ' · ' + c.applicant_title : ''}{c.applicant_location ? ' · ' + c.applicant_location : ''} · {timeAgo(c.created_at)}</span>
-                  {c.match_scored ? <Chips ok={c.matched_skills} miss={c.missing_skills} /> : <span className="muted small ms-note">{RESUME_NOTE[c.resume_state]}</span>}
+                  {(c.match_scored || c.github_verified.length > 0) ? <Chips ok={c.matched_skills} miss={c.missing_skills} gh={c.github_verified} site={c.portfolio_verified} /> : <span className="muted small ms-note">{RESUME_NOTE[c.resume_state]}</span>}
+                  {c.github_verified.length > 0 && <span className="muted small ms-note">GitHub Verified: {c.github_verified.join(', ')}</span>}
                   {c.match_scored && c.match_source === 'profile' && <span className="muted small ms-note">* Resume unreadable, scored from profile skills</span>}
                 </div>
                 <MatchBadge c={c} />
@@ -330,6 +365,7 @@ export function Candidates() {
                     <ul className="qa">{c.answers.map((x, i) => <li key={i}><span className="muted">{x.question}</span><b>{x.answer}{x.ok === true && <i className="qa-ok"> ✓ as hoped</i>}{x.ok === false && <i className="qa-no"> ✗ not preferred</i>}</b></li>)}</ul></div>}
                   {c.match_scored && <div><strong>Skill match (from resume)</strong>
                     <div className="chips big">{c.matched_skills.map((t) => <i key={'o' + t} className="chip ok">✓ {t}</i>)}{c.missing_skills.map((t) => <i key={'m' + t} className="chip miss">{t} (missing)</i>)}</div></div>}
+                  <RealBreakdown c={c} />
                   {c.applicant_skills.length > 0 && <div><strong>Skills on profile</strong><div className="chips big">{c.applicant_skills.map((t) => <i key={t} className="chip">{t}</i>)}</div></div>}
                   <div><strong>Cover letter</strong><div className="pre">{c.cover_letter || '—'}</div></div>
                   <div><strong>Resume</strong>{!c.match_scored && <div className="muted small">{RESUME_NOTE[c.resume_state]}</div>}<div>{c.resume_url ? <a className="link" href={c.resume_url} target="_blank" rel="noopener noreferrer">{c.resume_url.includes('/api/files/') ? 'Open uploaded resume ↗' : c.resume_url}</a> : '—'}</div></div>
