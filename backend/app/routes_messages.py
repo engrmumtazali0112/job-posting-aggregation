@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select, update, func
 from sqlalchemy.orm import Session
 from .database import get_db
-from .models import Message, Application, Job, Company, User
+from .models import Message, Application, Job, Company, User, CompanyReview
 from .schemas import MessageIn
 from .security import current_user
 from .services import notify
@@ -59,8 +59,17 @@ def get_thread(app_id: int, user: User = Depends(current_user), db: Session = De
     db.commit()
     msgs = db.scalars(select(Message).where(Message.application_id == app_id).order_by(Message.id)).all()
     applicant = db.get(User, app.user_id)
+    rating = db.scalar(select(func.avg(CompanyReview.rating)).where(CompanyReview.company_id == company.id))
+    reviews = db.scalar(select(func.count()).select_from(CompanyReview).where(CompanyReview.company_id == company.id)) or 0
     return {"application_id": app.id, "job_title": job.title,
             "title": (applicant.full_name or applicant.email) if user.role == "employer" else company.name,
+            "job": {"id": job.id, "title": job.title, "company_id": company.id, "company_name": company.name,
+                    "company_rating": round(float(rating), 1) if rating else 0, "company_reviews": reviews,
+                    "location": job.location, "workplace_type": job.workplace_type, "job_type": job.job_type,
+                    "salary_min": job.salary_min, "salary_max": job.salary_max, "salary_period": job.salary_period,
+                    "status": job.status},
+            "applicant": {"name": applicant.full_name or applicant.email, "email": applicant.email,
+                          "status": app.status} if user.role == "employer" else None,
             "messages": [{"id": m.id, "body": m.body, "mine": m.sender_id == user.id, "created_at": m.created_at}
                          for m in msgs]}
 

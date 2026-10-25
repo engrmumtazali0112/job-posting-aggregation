@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
-import { Link, NavLink, Route, Routes, Navigate, useLocation } from 'react-router-dom'
+﻿import { useState, useEffect } from 'react'
+import { Link, NavLink, Outlet, Route, Routes, Navigate, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from './auth.jsx'
+import { api } from './api'
 import Icon from './components/Icon.jsx'
 import { useOutside } from './components/ui.jsx'
 import Home from './pages/Home.jsx'
@@ -10,6 +11,7 @@ import Company from './pages/Company.jsx'
 import CompanySearch from './pages/CompanySearch.jsx'
 import { Login, Register } from './pages/Auth.jsx'
 import { Notifications, Messages } from './pages/Inbox.jsx'
+import Apply from './pages/Apply.jsx'
 import * as E from './pages/Employer.jsx'
 import * as A from './pages/Admin.jsx'
 import * as S from './pages/Seeker.jsx'
@@ -116,6 +118,32 @@ export function Protected({ role, children }) {
   return children
 }
 
+// Messages and notifications open inside the user's own dashboard layout (sidebar stays visible).
+function RoleShell() {
+  const { user } = useAuth()
+  if (user?.role === 'employer') return <E.Layout />
+  if (user?.role === 'job_seeker') return <S.Layout />
+  return <Outlet />
+}
+
+// Jobs with application questions: show a clear "Answer questions & apply" button above the job page.
+function JobDetailGate() {
+  const { id } = useParams(); const { user } = useAuth()
+  const [job, setJob] = useState(null)
+  useEffect(() => { api('/jobs/' + id).then(setJob).catch(() => setJob(null)) }, [id])
+  const n = job?.questions?.length || 0
+  return (
+    <>
+      {user?.role === 'job_seeker' && job?.source_type === 'employer' && n > 0 && (
+        <div className="wrap"><div className="card apply-banner">
+          <div><strong>This employer has {n} question{n === 1 ? '' : 's'} for applicants.</strong><div className="muted">Answer them to send your application.</div></div>
+          <Link to={`/jobs/${id}/apply`} className="btn btn-primary">Answer questions &amp; apply</Link>
+        </div></div>)}
+      <JobDetail />
+    </>
+  )
+}
+
 function ScrollTop() {
   const { pathname } = useLocation()
   useEffect(() => {
@@ -127,7 +155,7 @@ function ScrollTop() {
 export default function App() {
   const { pathname } = useLocation()
   // dashboards (job seeker, employer, admin) have their own sidebar layout, so no footer there
-  const inPanel = /^\/(my|admin|employer\/dashboard)(\/|$)/.test(pathname)
+  const inPanel = /^\/(my|admin|employer\/dashboard|messages|notifications)(\/|$)/.test(pathname)
   return (
     <>
       <ScrollTop />
@@ -136,7 +164,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/jobs" element={<Jobs />} />
-          <Route path="/jobs/:id" element={<JobDetail />} />
+          <Route path="/jobs/:id" element={<JobDetailGate />} />
+          <Route path="/jobs/:id/apply" element={<Protected role="job_seeker"><Apply /></Protected>} />
           <Route path="/companies" element={<CompanySearch />} />
           <Route path="/companies/:id" element={<Company />} />
           <Route path="/login" element={<Login />} />
@@ -168,8 +197,10 @@ export default function App() {
             <Route path="profile" element={<S.Profile />} />
           </Route>
 
-          <Route path="/notifications" element={<Protected><Notifications /></Protected>} />
-          <Route path="/messages" element={<Protected><Messages /></Protected>} />
+          <Route element={<Protected><RoleShell /></Protected>}>
+            <Route path="/notifications" element={<Notifications />} />
+            <Route path="/messages" element={<Messages />} />
+          </Route>
           <Route path="*" element={<div className="wrap pad"><div className="card empty">Page not found.</div></div>} />
         </Routes>
       </main>
