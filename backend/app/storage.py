@@ -49,3 +49,56 @@ def delete_file(url: str | None) -> None:
         (RESUME_DIR / name).unlink(missing_ok=True)
     except OSError:
         pass
+
+
+# ---------- reading a resume (used to match applicants against a job post) ----------
+MAX_TEXT = 60_000
+
+
+def local_path(url: str | None) -> Path | None:
+    if not url or URL_PREFIX not in url:
+        return None
+    p = RESUME_DIR / Path(url.split(URL_PREFIX, 1)[1]).name
+    return p if p.exists() else None
+
+
+def _ocr(path: Path) -> str:
+    """Optional: images are only readable when pytesseract, Pillow and the Tesseract program are installed."""
+    try:
+        import pytesseract
+        from PIL import Image
+        return pytesseract.image_to_string(Image.open(path)) or ""
+    except Exception:
+        return ""
+
+
+def extract_text(url: str | None) -> str:
+    """Plain text of an uploaded resume ('' when it cannot be read). Links to other sites are not fetched."""
+    path = local_path(url)
+    if not path:
+        return ""
+    text = ""
+    if path.suffix.lower() == ".pdf":
+        try:
+            from pypdf import PdfReader
+            text = "\n".join((pg.extract_text() or "") for pg in PdfReader(str(path)).pages[:20])
+        except Exception as exc:                      # pypdf missing, encrypted or damaged file
+            print("[resume] cannot read pdf:", repr(exc))
+    else:
+        text = _ocr(path)
+    text = text.strip()[:MAX_TEXT]
+    return text if len(text) >= 30 else ""
+
+
+def resume_state(url: str | None, text: str | None) -> str:
+    """Why a resume can or cannot be matched: ok | none | link | image | scanned | missing."""
+    if text:
+        return "ok"
+    if not url:
+        return "none"
+    if URL_PREFIX not in url:
+        return "link"
+    path = local_path(url)
+    if not path:
+        return "missing"
+    return "scanned" if path.suffix.lower() == ".pdf" else "image"

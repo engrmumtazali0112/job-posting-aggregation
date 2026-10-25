@@ -63,6 +63,7 @@ class Job(Base):
     source_id: Mapped[int | None] = mapped_column(ForeignKey("job_sources.id"))
     company_id: Mapped[int | None] = mapped_column(ForeignKey("companies.id"))
     status: Mapped[str] = mapped_column(String(20), default="published")
+    questions: Mapped[list | None] = mapped_column(JSON)      # screening questions: [{id, text, type, required, options, ideal}]
     dedupe_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=now, onupdate=now)
@@ -77,6 +78,8 @@ class Application(Base):
     cover_letter: Mapped[str | None] = mapped_column(Text)
     resume_url: Mapped[str | None] = mapped_column(String(500))
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    answers: Mapped[list | None] = mapped_column(JSON)         # answers to the job's screening questions (snapshot)
+    resume_text: Mapped[str | None] = mapped_column(Text)      # text read from the resume; None = not read yet, '' = nothing readable
     skipped: Mapped[bool] = mapped_column(Boolean, default=False)   # employer hid it from the list (no notification)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
@@ -125,6 +128,7 @@ class SeekerProfile(Base):
     visible: Mapped[bool] = mapped_column(Boolean, default=True)          # "Employers can find you"
     resume_url: Mapped[str | None] = mapped_column(String(500))
     resume_name: Mapped[str | None] = mapped_column(String(200))
+    resume_text: Mapped[str | None] = mapped_column(Text)      # text read from the uploaded resume (used for job matching)
     job_titles: Mapped[list | None] = mapped_column(JSON)
     job_types: Mapped[list | None] = mapped_column(JSON)
     min_pay: Mapped[int | None] = mapped_column(Integer)

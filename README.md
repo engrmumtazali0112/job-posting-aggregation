@@ -43,7 +43,10 @@ On top of the job feed there are Glassdoor-style company pages (reviews, salarie
 - Dashboard with profile completion and application stats. Every card and "next step" is a link: a step opens the matching part of the profile (phone and location, job titles, summary, skills ...), and the stat cards open My applications with the right filter
 - My applications (search, status filter, sortable columns, column chooser)
 - Saved jobs, full profile (summary, skills, experience, education, languages, certifications, resume)
-- Resume upload (PDF, PNG or JPG, max 5 MB) or a link; the resume is attached automatically when applying
+- Resume upload (PDF, PNG or JPG, max 5 MB) or a link; the resume is attached automatically when applying. Text PDFs are read so employers can see how well the resume matches each job (the page tells you when a resume cannot be read)
+- Apply page with the employer's screening questions (`/jobs/:id/apply`); jobs with questions show an "Answer questions & apply" button
+- Messages page with a job details panel next to the chat: company (rating, link), location, job type, salary, workplace, your application status and a link to the full job description
+- Company page: snapshot, rating breakdown, reviews with a write-a-review form, salaries and open jobs
 - Messages and notifications, shown inside the same sidebar layout as the rest of the panel
 - Can review companies (one review per company)
 
@@ -51,7 +54,8 @@ On top of the job feed there are Glassdoor-style company pages (reviews, salarie
 - Dashboard with job and candidate counts
 - Post / edit / pause / resume / close / reopen / delete jobs
 - Candidate pipeline: `new → reviewing → shortlisted → contacting → interviewing → hired / rejected`; the candidate is notified on each change
-- **Smart screening for busy jobs:** every applicant gets a skill-match score against the job post. The list is ranked best match first, top matches are highlighted, and each card shows matched and missing skills. One click to **Shortlist**, **Reject** (notifies the applicant) or **Skip** (hides the application, nobody is notified, can be restored). Select several for bulk actions, or use **Shortlist top matches**
+- **Application questions:** add up to 10 questions when posting or editing a job (quick buttons for Bachelor's degree, current salary, expected salary, notice period, years of experience, or your own: Yes/No, number, multiple choice, written answer; required or optional; a preferred Yes/No answer). Answers appear on the candidate card, marked ✓ or ✗ against your preferred answer
+- **Smart screening for busy jobs:** every applicant gets a skill-match score from their **resume** against the job post. The list is ranked best match first, top matches are highlighted, and each card shows matched and missing skills. One click to **Shortlist**, **Reject** (notifies the applicant) or **Skip** (hides the application, nobody is notified, can be restored). Select several for bulk actions, or use **Shortlist top matches**
 - Every dashboard card is a link to the page it counts (for example Interviewing opens Candidates filtered to interviewing)
 - Messages with candidates, company profile (name, website, description, logo)
 - Public landing page at `/employer`
@@ -80,7 +84,7 @@ Project/
 │   │   ├── models.py              # all tables + make_hash()
 │   │   ├── schemas.py             # Pydantic request/response models
 │   │   ├── security.py            # password hashing, JWT, current_user, require_role
-│   │   ├── matching.py            # skill matching: job post vs applicant profile
+│   │   ├── matching.py            # skill matching: job post vs the applicant's resume text
 │   │   ├── storage.py             # resume file storage (local disk now; swap for S3/R2 later)
 │   │   ├── services.py            # shared helpers (approval setting, job fields, notify, unclaimed companies)
 │   │   ├── main.py                # FastAPI app, CORS, public job list and detail
@@ -230,12 +234,12 @@ On the frontend, `Protected` in `App.jsx` checks the role before a panel opens. 
 | `users` | email (unique), password_hash, full_name, role, is_verified, is_active, auth_provider |
 | `companies` | user_id (**NULL = unclaimed**, auto-created from aggregated jobs), name, website, description, logo_url, domain_verified |
 | `job_sources` | name, type (`api` / `rss` / `jooble`), endpoint, active |
-| `jobs` | title, company_name, company_id, location, workplace_type, job_type, job_category, openings, hiring_timeline, salary range / period / currency, description, apply_url, source_type (`aggregated` / `employer`), source_id, status (`pending` / `published` / `paused` / `closed` / `rejected`), **dedupe_hash** (unique) |
-| `applications` | job_id, user_id, status (`new`, `reviewing`, `shortlisted`, `contacting`, `interviewing`, `rejected`, `hired`), cover_letter, resume_url, archived (seeker's own archive), skipped (employer hid it) (unique per job + user) |
+| `jobs` | questions (screening questions, JSON), title, company_name, company_id, location, workplace_type, job_type, job_category, openings, hiring_timeline, salary range / period / currency, description, apply_url, source_type (`aggregated` / `employer`), source_id, status (`pending` / `published` / `paused` / `closed` / `rejected`), **dedupe_hash** (unique) |
+| `applications` | job_id, user_id, status (`new`, `reviewing`, `shortlisted`, `contacting`, `interviewing`, `rejected`, `hired`), cover_letter, resume_url, resume_text (text read from the resume), answers (answers to the job's questions), archived (seeker's own archive), skipped (employer hid it) (unique per job + user) |
 | `saved_jobs` | job_id, user_id (unique per pair) |
 | `company_reviews` | company_id, user_id, rating 1–5, title, pros, cons |
 | `salary_reports` | company_id, job_title, base_salary, currency, period |
-| `seeker_profiles` | phone, location, visibility, resume, desired titles / types / pay, summary, skills, experience, education, languages, certifications |
+| `seeker_profiles` | resume_text, phone, location, visibility, resume, desired titles / types / pay, summary, skills, experience, education, languages, certifications |
 | `notifications` | user_id, text, link, is_read |
 | `messages` | application_id, sender_id, body, is_read |
 | `success_stories` | home page testimonials added by an admin |
@@ -275,18 +279,19 @@ Interactive docs with every route: http://127.0.0.1:8000/docs
 | POST | `/resume` | Upload a resume as multipart field `file`. PDF, PNG, JPG only, checked by content, max 5 MB |
 | DELETE | `/resume` | Remove the resume |
 | GET | `/dashboard`, `/applications`, `/summary` | Stats and application list |
-| POST | `/jobs/{id}/apply` | Apply to an employer job (uses the profile resume if none is sent) |
+| POST | `/jobs/{id}/apply` | Apply to an employer job. Body `{cover_letter?, answers?}`; required questions must be answered (422 otherwise). Uses the profile resume if none is sent |
 | GET / POST / DELETE | `/saved`, `/saved/{id}` | Saved jobs |
 
 **Files** – `GET /api/files/resumes/{name}` serves uploaded resumes. Names are random and unguessable; there is no login check yet (see Known Notes).
 
-**Messages and notifications** (`/api/messages/*`, `/api/notifications/*`, any logged-in user) – one conversation per application; see `/docs`.
+**Messages and notifications** (`/api/messages/*`, `/api/notifications/*`, any logged-in user) – one conversation per application. `GET /api/messages/{application_id}` returns the messages plus `job` (title, location, type, salary...), `company` (name, rating...) and, for employers, `applicant` (contact details, resume match). See `/docs`.
 
 **Employer** (`/api/employer/*`, role `employer`)
 
 | Method | Path | Description |
 |---|---|---|
 | GET | `/dashboard` | Job and candidate counts |
+| POST / PUT | `/jobs`, `/jobs/{id}` | Body may include `questions` (up to 10). Leave `questions` out of an edit to keep the existing ones |
 | POST / GET | `/jobs` | Create / list own jobs |
 | GET / PUT / DELETE | `/jobs/{id}` | Read, edit, delete |
 | POST | `/jobs/{id}/status` | `pause`, `resume`, `close`, `reopen` |
@@ -342,12 +347,14 @@ Employer registers (company created) -> POST /api/employer/jobs
 
 ## Skill matching
 
-`app/matching.py` scores each applicant against the job they applied to:
+`app/matching.py` scores each applicant's **resume** against the job they applied to. The profile is not used: only text written in the uploaded resume counts.
 
-1. Known skills (about 150, with spelling variants such as `React.js` = `react`) are found in the job title and description.
-2. The applicant's listed skills count fully; skills only mentioned in the summary or experience count 80%.
-3. Score = share of the job's skills the applicant has, plus up to 10 points when job titles resemble each other.
-4. 70% and up is a **top match**, 45% and up is a **good match**. Applicants with no skills on their profile show "No skills listed" instead of 0%.
+1. When a resume is uploaded its text is read (PDF with `pypdf`) and stored; the text is copied to each application.
+2. Known skills (about 150, with spelling variants such as `React.js` = `react`) are found in the job title and description, and in the resume.
+3. Score = share of the job's skills that appear in the resume (max 90), plus up to 10 points when the job title's words also appear in the resume.
+4. 70% and up is a **top match**, 45% and up is a **good match**.
+5. A resume that cannot be read is **not scored** (it shows "No readable resume" and the reason) instead of getting 0%: an image (PNG/JPG) without OCR, a scanned PDF, a link to another site, or no resume at all. Candidates are told on their profile and apply pages to upload a text-based PDF.
+6. Optional OCR for PNG/JPG resumes: install the Tesseract program, then `pip install pytesseract pillow`. Nothing else needs to change.
 
 It is rule based, with no external AI service and no cost. To use an LLM later, replace `match_score()` and keep its return shape. Add new skills to `SKILLS` in the same file.
 
@@ -355,7 +362,7 @@ It is rule based, with no external AI service and no cost. To use an LLM later, 
 
 ## Migrations
 
-There is no Alembic. After pulling code that adds columns, run:
+There is no Alembic. The API now adds missing columns by itself every time it starts (`add_missing_columns()` in `migrate.py`), so a fresh `git pull` and restart is enough. You can still run the full migration by hand:
 
 ```powershell
 .\venv\Scripts\python.exe -m app.migrate --dry-run   # preview
@@ -387,6 +394,8 @@ It creates missing tables (and adds `applications.skipped` after the screening u
 - **Resume files are stored on local disk and are reachable by anyone who has the random link** (employers get it in Candidates). Before launch move them to a private bucket with signed URLs by changing only `storage.py`.
 - Open one account per browser profile (or per tab if the token is kept in `sessionStorage`): tabs share `localStorage`, so logging in as a second user changes the token the other tabs send.
 - Passwords are limited to 72 characters (bcrypt).
+- PNG/JPG resumes can be stored but are only matched when OCR is installed (see Skill matching). PDF is recommended.
+- Application questions are shown on the job page through an "Answer questions & apply" button and the `/jobs/:id/apply` page. The apply button inside the job list's split view still applies without answers; for a job that has required questions the server refuses it and explains why.
 - `hero.mp4` in `frontend/public` is optional; the hero falls back to a gradient.
 
 ---
@@ -398,7 +407,8 @@ It creates missing tables (and adds `applications.skipped` after the screening u
 | "You do not have permission" for employers or job seekers, admin works | Several accounts are logged in in the same browser; they share one token. Log out, or use a separate browser profile / Incognito per account. |
 | Profile "Add your phone number" step shows no phone field | Fixed: the step now opens the Edit profile form (`/my/profile?focus=basics`). |
 | "Cannot reach the server" when saving the profile | Fixed: `ProfileIn` in `schemas.py` now includes summary, skills, experience, education, languages and certifications. Restart uvicorn after updating. |
-| `column applications.skipped does not exist` | Run `python -m app.migrate` once (also on the Neon database). |
+| "Cannot reach the server" on the employer dashboard or My applications, with `no such column` / `does not exist` in the uvicorn log | The database is missing a new column. Restart uvicorn (columns are added at startup), or run `python -m app.migrate`. |
+| "No readable resume" on a candidate | The resume is an image, a scanned PDF or a link. Ask for a text-based PDF. Make sure `pypdf` is installed (`pip install pypdf`). |
 | Resume upload says "not a valid PDF" | The file content does not match its extension. Re-export the file instead of renaming it. |
 | An employer job is missing from search | Check the location box. A job in Islamabad does not match location "Remote" unless its workplace type is Remote. |
 | Messages page has no sidebar | Use the updated `App.jsx` (`RoleShell`) and `Seeker.jsx`. |

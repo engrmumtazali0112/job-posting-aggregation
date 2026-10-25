@@ -1,14 +1,16 @@
-"""Skill matching between a job post and an applicant's profile (rule based, no external AI service).
+"""Skill matching between a job post and an applicant's RESUME (rule based, no external AI service).
 
 How it works
-  1. Both texts are scanned for known skills (SKILLS below, with spelling variants: "React.js" = "react").
-  2. job_terms   = skills found in the job title + description
-     applicant   = skills listed on the profile (strong) + skills mentioned in the summary / experience (weaker)
-  3. score = share of the job's skills the applicant has (listed counts 1.0, mentioned only counts 0.8),
-     plus up to 10 points when the applicant's wanted/previous job titles resemble this job's title.
+  1. The job title + description and the resume text are scanned for known skills (SKILLS below, with
+     spelling variants: "React.js" = "react").
+  2. score = share of the job's skills that appear in the resume (max 90), plus up to 10 points when the
+     words of the job title also appear in the resume.
+  3. If the job names no known skill, the most frequent keywords of the job post are compared with the resume instead (max 70).
+The profile is NOT used: only what is written in the uploaded resume counts.
 To use a real LLM later, replace match_score() and keep the same return shape.
 """
 import re
+from collections import Counter
 
 # canonical name -> spelling variants (the canonical name itself is always included)
 SKILLS: dict[str, list[str]] = {
@@ -62,42 +64,41 @@ def _words(s: str | None) -> set[str]:
     return {w for w in re.findall(r"[a-z]{4,}", (s or "").lower()) if w not in _STOP}
 
 
-def match_score(job_title: str, job_description: str, profile) -> dict:
-    """profile: a SeekerProfile row or None. Returns score 0-100 and the skills behind it."""
-    skills = list(getattr(profile, "skills", None) or [])
-    experience = list(getattr(profile, "experience", None) or [])
-    wanted = list(getattr(profile, "job_titles", None) or [])
-    text_parts = [getattr(profile, "summary", None) or ""] + [f"{e.get('title') or ''} {e.get('description') or ''}" for e in experience]
-    listed = set().union(*[find_skills(s) for s in skills]) if skills else set()
-    mentioned = find_skills(" ".join(text_parts)) - listed
-    job_terms = find_skills(f"{job_title}\n{job_description}")
+_COMMON = _STOP | {"with", "that", "this", "will", "have", "from", "your", "they", "their", "about", "work", "working", "team",
+                   "experience", "years", "year", "ability", "strong", "skills", "skill", "knowledge", "looking", "should", "including",
+                   "must", "also", "well", "good", "role", "company", "candidate", "position", "responsibilities", "requirements",
+                   "required", "preferred", "description", "apply", "using", "across", "other", "more", "than", "into", "able", "great",
+                   "excellent", "join", "help", "build", "building", "need", "needs", "plus", "such", "like", "make", "ensure", "within"}
 
-    if not skills and not mentioned and not wanted:
+
+def _keywords(text: str, n: int = 25) -> set[str]:
+    words = [w for w in re.findall(r"[a-z]{4,}", text.lower()) if w not in _COMMON]
+    return {w for w, _ in Counter(words).most_common(n)}
+
+
+def match_score(job_title: str, job_description: str, resume_text: str | None) -> dict:
+    """Score 0-100 of how well the resume text fits the job post."""
+    job_text = f"{job_title}\n{job_description}"
+    job_terms = find_skills(job_text)
+    text = (resume_text or "").strip()
+    if not text:
         return {"scored": False, "score": 0, "level": "none", "matched": [], "missing": [label(t) for t in sorted(job_terms)][:8]}
 
-    matched_listed = job_terms & listed
-    matched_text = (job_terms & mentioned)
-    matched_raw = []                                   # listed skills we do not know, but the job text contains
-    low = f"{job_title} {job_description}".lower()
-    for s in skills:
-        s2 = s.strip().lower()
-        if len(s2) >= 3 and not find_skills(s2) and re.search(r"(?<![\w])" + re.escape(s2) + r"(?![\w])", low):
-            matched_raw.append(s.strip())
-
+    have = find_skills(text)
+    matched = job_terms & have
     if job_terms:
-        base = (len(matched_listed) + 0.8 * len(matched_text) + len(matched_raw)) / (len(job_terms) + len(matched_raw))
-        score = base * 90
-    else:                                              # job names no known skill: use the applicant's own skills as evidence
-        hits = len(matched_raw)
-        score = min(hits / max(1, min(len(skills), 5)), 1) * 70
+        score = len(matched) / len(job_terms) * 90
+    else:                                              # job names no known skill: compare plain keywords
+        kw = _keywords(job_text)
+        rw = _words(text)
+        score = min(70.0, (len(kw & rw) / len(kw) * 100) if kw else 0)
+        matched = set()
 
-    title_words = _words(job_title)
-    mine = set().union(*[_words(t) for t in wanted], *[_words(e.get("title")) for e in experience]) if (wanted or experience) else set()
-    if title_words and mine:
-        score += 10 * min(1.0, len(title_words & mine) / max(1, len(title_words)) * 2)
+    tw, rw = _words(job_title), _words(text)
+    if tw:
+        score += 10 * min(1.0, len(tw & rw) / len(tw) * 2)
 
     score = int(round(min(100, score)))
-    matched = [label(t) for t in sorted(matched_listed | matched_text)] + matched_raw
-    missing = [label(t) for t in sorted(job_terms - matched_listed - matched_text)]
     return {"scored": True, "score": score, "level": "top" if score >= 70 else "good" if score >= 45 else "low",
-            "matched": matched[:10], "missing": missing[:8]}
+            "matched": [label(t) for t in sorted(matched)][:10],
+            "missing": [label(t) for t in sorted(job_terms - matched)][:8]}
