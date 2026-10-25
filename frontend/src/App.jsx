@@ -9,7 +9,7 @@ import Jobs from './pages/Jobs.jsx'
 import JobDetail from './pages/JobDetail.jsx'
 import Company from './pages/Company.jsx'
 import CompanySearch from './pages/CompanySearch.jsx'
-import { Login, Register } from './pages/Auth.jsx'
+import { Login, Register, VerifyEmail } from './pages/Auth.jsx'
 import { Notifications, Messages } from './pages/Inbox.jsx'
 import Apply from './pages/Apply.jsx'
 import * as E from './pages/Employer.jsx'
@@ -170,6 +170,7 @@ export default function App() {
           <Route path="/companies/:id" element={<Company />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/verify-email/:token" element={<VerifyEmail />} />
 
           <Route path="/employer" element={<E.LandingPage />} />
           <Route path="/employer/dashboard" element={<Protected role="employer"><E.Layout /></Protected>}>

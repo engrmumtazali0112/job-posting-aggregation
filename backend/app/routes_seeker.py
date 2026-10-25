@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+import re
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from .database import get_db
@@ -6,7 +7,7 @@ from .models import User, Job, Application, SavedJob, SeekerProfile, Company
 from .security import require_role
 from .schemas import ApplicationIn, ProfileIn, JobPublic
 from .services import notify
-from . import storage
+from . import storage, ats, resume_builder
 
 router = APIRouter(prefix="/api/seeker", tags=["seeker"], dependencies=[Depends(require_role("job_seeker"))])
 seeker = require_role("job_seeker")
@@ -30,7 +31,9 @@ def profile_out(user: User, p: SeekerProfile) -> dict:
             "min_pay_period": p.min_pay_period or "month", "relocation": p.relocation,
             "available_now": bool(p.available_now), "summary": p.summary, "skills": p.skills or [],
             "experience": p.experience or [], "education": p.education or [],
-            "languages": p.languages or [], "certifications": p.certifications or []}
+            "languages": p.languages or [], "certifications": p.certifications or [],
+            "linkedin_url": p.linkedin_url, "github_url": p.github_url, "portfolio_url": p.portfolio_url,
+            "projects": p.projects or []}
 
 
 @router.get("/profile")
@@ -48,7 +51,7 @@ def update_profile(data: ProfileIn, user: User = Depends(seeker), db: Session = 
         p.resume_text = None
     user.full_name = (data.full_name or "").strip() or None
     for k in ("phone", "location", "visible", "resume_url", "resume_name", "min_pay", "min_pay_period",
-              "relocation", "available_now"):
+              "relocation", "available_now", "linkedin_url", "github_url", "portfolio_url"):
         setattr(p, k, getattr(data, k))
     p.job_titles = [t.strip() for t in data.job_titles if t.strip()]
     p.job_types = list(data.job_types)
@@ -64,6 +67,7 @@ def update_profile(data: ProfileIn, user: User = Depends(seeker), db: Session = 
     p.education = [i.model_dump() for i in data.education]
     p.languages = [i.model_dump() for i in data.languages]
     p.certifications = [i.model_dump() for i in data.certifications]
+    p.projects = [i.model_dump() for i in data.projects if (i.name or "").strip()]
     db.commit()
     return profile_out(user, p)
 
@@ -88,6 +92,29 @@ def remove_resume(user: User = Depends(seeker), db: Session = Depends(get_db)):
     p.resume_url = p.resume_name = p.resume_text = None
     db.commit()
     return {"ok": True}
+
+
+# --- Resume builder + ATS score (both work from the saved profile) ---
+@router.get("/resume/generate")
+def generate_resume(user: User = Depends(seeker), db: Session = Depends(get_db)):
+    """Download an ATS-friendly Word resume built from the saved profile."""
+    p = profile_row(db, user)
+    db.commit()
+    out = profile_out(user, p)
+    try:
+        data = resume_builder.build_docx(out)
+    except ImportError:
+        raise HTTPException(503, "Resume builder is not installed on the server (pip install python-docx)")
+    name = re.sub(r"[^A-Za-z0-9]+", "_", out["full_name"] or user.email.split("@")[0]).strip("_") or "Candidate"
+    return Response(content=data, headers={"Content-Disposition": f'attachment; filename="{name}_Resume.docx"'},
+                    media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+
+@router.get("/resume/ats-score")
+def resume_ats_score(user: User = Depends(seeker), db: Session = Depends(get_db)):
+    p = profile_row(db, user)
+    db.commit()
+    return ats.ats_score(profile_out(user, p))
 
 
 # --- Dashboard ---

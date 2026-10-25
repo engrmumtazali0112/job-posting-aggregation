@@ -29,8 +29,12 @@ async def lifespan(app):
     sched.shutdown(wait=False)
 
 app = FastAPI(title="Job Platform API", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=[o.strip() for o in settings.cors_origins.split(",")],
-                   allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Total-Count"])
+# CORS_ORIGINS = comma separated list of site addresses allowed to call this API from a browser, e.g.
+#   http://localhost:5173,https://job-board-frontend-opal.vercel.app   (no path, no trailing slash: a trailing / is stripped here)
+# CORS_ORIGIN_REGEX (optional) also allows Vercel preview URLs, e.g.  ^https://job-board-frontend-[a-z0-9-]+\.vercel\.app$
+app.add_middleware(CORSMiddleware, allow_origins=[o.strip().rstrip("/") for o in settings.cors_origins.split(",") if o.strip()],
+                   allow_origin_regex=settings.cors_origin_regex or None,
+                   allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Total-Count", "Content-Disposition"])
 
 @app.exception_handler(Exception)
 async def unhandled(request: Request, exc: Exception):

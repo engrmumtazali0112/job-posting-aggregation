@@ -22,6 +22,10 @@ class User(Base):
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     auth_provider: Mapped[str] = mapped_column(String(20), default="password")
+    verification_token: Mapped[str | None] = mapped_column(String(64), index=True)   # SHA-256 of the emailed token (the token itself is never stored)
+    verification_sent_at: Mapped[datetime | None] = mapped_column(DateTime)
+    reset_token: Mapped[str | None] = mapped_column(String(64), index=True)   # SHA-256 of the emailed password-reset token (the token itself is never stored)
+    reset_sent_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 class Company(Base):
@@ -141,6 +145,10 @@ class SeekerProfile(Base):
     education: Mapped[list | None] = mapped_column(JSON)        # [{degree, institution, year}]
     languages: Mapped[list | None] = mapped_column(JSON)        # [{language, level}]
     certifications: Mapped[list | None] = mapped_column(JSON)   # [{name, issuer, year}]
+    linkedin_url: Mapped[str | None] = mapped_column(String(300))
+    github_url: Mapped[str | None] = mapped_column(String(300))
+    portfolio_url: Mapped[str | None] = mapped_column(String(300))
+    projects: Mapped[list | None] = mapped_column(JSON)         # [{name, description, tech_stack: [..], url}]
 
 class Notification(Base):
     __tablename__ = "notifications"
