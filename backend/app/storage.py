@@ -11,7 +11,12 @@ from pathlib import Path
 from fastapi import HTTPException, UploadFile
 from .config import settings
 
+# A relative upload_dir is resolved against the backend folder, NOT the folder uvicorn was started from.
+# (Otherwise starting the server from another directory makes every saved resume look "missing".)
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
 UPLOAD_ROOT = Path(settings.upload_dir)
+if not UPLOAD_ROOT.is_absolute():
+    UPLOAD_ROOT = _BACKEND_DIR / UPLOAD_ROOT
 RESUME_DIR = UPLOAD_ROOT / "resumes"
 RESUME_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -73,6 +78,12 @@ def _ocr(path: Path) -> str:
 
 
 def extract_text(url: str | None) -> str:
+    """Plain text of an uploaded resume ('' when it cannot be read). Implemented in resume_parser.py."""
+    from .resume_parser import read_resume
+    return read_resume(url)[0]
+
+
+def _extract_text_old(url: str | None) -> str:
     """Plain text of an uploaded resume ('' when it cannot be read). Links to other sites are not fetched."""
     path = local_path(url)
     if not path:

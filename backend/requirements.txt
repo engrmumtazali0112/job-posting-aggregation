@@ -13,3 +13,5 @@ httpx
 feedparser
 google-auth
 requests
+pypdf
+pdfplumber
