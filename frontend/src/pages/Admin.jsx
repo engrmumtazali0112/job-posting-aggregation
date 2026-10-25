@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import PanelLayout from '../components/PanelLayout.jsx'
 import JobForm, { toForm } from '../components/JobForm.jsx'
 import { Badge, Pager, Stat } from '../components/ui.jsx'
 import { api, apiList, qs, timeAgo } from '../api'
 
 const L = 25
+const SL = ({ to, children }) => <Link to={to} className="stat-link">{children}</Link>
 export const Layout = () => (
   <PanelLayout title="Admin" items={[
     ['/admin', 'Dashboard', true], ['/admin/jobs', 'Jobs'], ['/admin/users', 'Users'],
@@ -23,26 +24,34 @@ export function Dashboard() {
       {s.jobs.pending > 0 && <div className="alert warn">{s.jobs.pending} job(s) waiting for approval. <Link className="link" to="/admin/jobs">Review now →</Link></div>}
       <h3 className="sub-h">Users</h3>
       <div className="stats">
-        <Stat label="Total users" value={s.users.total} /><Stat label="Employers" value={s.users.employers} />
-        <Stat label="Job seekers" value={s.users.job_seekers} /><Stat label="New (7 days)" value={s.users.new_last_7_days} />
+        <SL to="/admin/users"><Stat label="Total users" value={s.users.total} /></SL>
+        <SL to="/admin/users?role=employer"><Stat label="Employers" value={s.users.employers} /></SL>
+        <SL to="/admin/users?role=job_seeker"><Stat label="Job seekers" value={s.users.job_seekers} /></SL>
+        <SL to="/admin/users"><Stat label="New (7 days)" value={s.users.new_last_7_days} /></SL>
       </div>
       <h3 className="sub-h">Jobs</h3>
       <div className="stats">
-        <Stat label="Total" value={s.jobs.total} /><Stat label="Live" value={s.jobs.published} />
-        <Stat label="Pending" value={s.jobs.pending} /><Stat label="Rejected" value={s.jobs.rejected} />
-        <Stat label="Aggregated" value={s.jobs.by_source?.aggregated ?? 0} /><Stat label="Employer" value={s.jobs.by_source?.employer ?? 0} />
+        <SL to="/admin/jobs?status=all"><Stat label="Total" value={s.jobs.total} /></SL>
+        <SL to="/admin/jobs?status=published"><Stat label="Live" value={s.jobs.published} /></SL>
+        <SL to="/admin/jobs?status=pending"><Stat label="Pending" value={s.jobs.pending} /></SL>
+        <SL to="/admin/jobs?status=rejected"><Stat label="Rejected" value={s.jobs.rejected} /></SL>
+        <SL to="/admin/jobs?status=all&source=aggregated"><Stat label="Aggregated" value={s.jobs.by_source?.aggregated ?? 0} /></SL>
+        <SL to="/admin/jobs?status=all&source=employer"><Stat label="Employer" value={s.jobs.by_source?.employer ?? 0} /></SL>
       </div>
       <h3 className="sub-h">Other</h3>
       <div className="stats">
-        <Stat label="Applications" value={s.applications.total} /><Stat label="Companies" value={s.companies.total} />
-        <Stat label="Verified companies" value={s.companies.verified} /><Stat label="Approval required" value={s.require_approval ? 'Yes' : 'No'} />
+        <SL to="/admin/jobs?status=all&source=employer"><Stat label="Applications" value={s.applications.total} /></SL>
+        <SL to="/admin/companies"><Stat label="Companies" value={s.companies.total} /></SL>
+        <SL to="/admin/companies"><Stat label="Verified companies" value={s.companies.verified} /></SL>
+        <SL to="/admin/settings"><Stat label="Approval required" value={s.require_approval ? 'Yes' : 'No'} /></SL>
       </div>
     </>
   )
 }
 
 export function Jobs() {
-  const [status, setStatus] = useState('pending'); const [source, setSource] = useState(''); const [q, setQ] = useState(''); const [off, setOff] = useState(0)
+  const [sp] = useSearchParams()
+  const [status, setStatus] = useState(sp.get('status') || 'pending'); const [source, setSource] = useState(sp.get('source') || ''); const [q, setQ] = useState(''); const [off, setOff] = useState(0)
   const [data, setData] = useState({ items: [], total: 0 }); const [sel, setSel] = useState([]); const [note, setNote] = useState('')
   const load = () => apiList('/admin/jobs?' + qs({ status, source, q, limit: L, offset: off })).then((d) => { setData(d); setSel([]) }).catch((e) => setNote(e.message))
   useEffect(() => { load() }, [status, source, off])
@@ -117,7 +126,8 @@ export function EditJob() {
 }
 
 export function Users() {
-  const [role, setRole] = useState(''); const [q, setQ] = useState(''); const [off, setOff] = useState(0)
+  const [sp] = useSearchParams()
+  const [role, setRole] = useState(sp.get('role') || ''); const [q, setQ] = useState(''); const [off, setOff] = useState(0)
   const [data, setData] = useState({ items: [], total: 0 }); const [note, setNote] = useState('')
   const load = () => apiList('/admin/users?' + qs({ role, q, limit: L, offset: off })).then(setData).catch((e) => setNote(e.message))
   useEffect(() => { load() }, [role, off])

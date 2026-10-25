@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { api, JOB_TYPES, STATUS_LABEL, shortDate, timeAgo } from '../api'
+import { Link, NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { api, getToken, JOB_TYPES, STATUS_LABEL, shortDate, timeAgo } from '../api'
 import { useAuth } from '../auth.jsx'
 import Icon from '../components/Icon.jsx'
 import JobCard from '../components/JobCard.jsx'
 import { useOutside } from '../components/ui.jsx'
 
 const LINKS = [['/my', 'dash', 'Dashboard', true], ['/my/applications', 'briefcase', 'My applications'],
-  ['/my/saved', 'bookmark', 'Saved jobs'], ['/my/profile', 'user', 'Profile']]
-const CRUMB = { '/my': 'Dashboard', '/my/applications': 'My applications', '/my/saved': 'Saved jobs', '/my/profile': 'Profile' }
-const GROUP = { new: 'applied', reviewing: 'review', contacting: 'review', interviewing: 'interview', hired: 'accepted', rejected: 'rejected' }
+  ['/my/saved', 'bookmark', 'Saved jobs'], ['/my/profile', 'user', 'Profile'], ['/messages', 'chat', 'Messages'], ['/notifications', 'bell', 'Notifications']]
+const CRUMB = { '/my': 'Dashboard', '/my/applications': 'My applications', '/my/saved': 'Saved jobs', '/my/profile': 'Profile', '/messages': 'Messages', '/notifications': 'Notifications' }
+const GROUP = { new: 'applied', reviewing: 'review', shortlisted: 'review', contacting: 'review', interviewing: 'interview', hired: 'accepted', rejected: 'rejected' }
 const GROUP_LABEL = { applied: 'Applied', review: 'Under review', interview: 'Interview', accepted: 'Accepted', rejected: 'Not selected' }
 
 /* ---------------- layout ---------------- */
@@ -38,7 +38,7 @@ export function Layout() {
   )
 }
 
-const Pill = ({ s }) => <span className={'sk-pill p-' + (GROUP[s] || 'applied')}>{STATUS_LABEL[s] || s}</span>
+const Pill = ({ s }) => <span className={'sk-pill p-' + (GROUP[s] || 'applied')}>{({ ...STATUS_LABEL, shortlisted: 'Shortlisted' })[s] || s}</span>
 
 /* ---------------- dashboard ---------------- */
 export function Dashboard() {
@@ -59,13 +59,13 @@ export function Dashboard() {
         <div className="sk-barfill" role="progressbar" aria-valuenow={c.percent} aria-valuemin="0" aria-valuemax="100"><i style={{ width: c.percent + '%' }} /></div>
         {c.next.length > 0 && <>
           <h4>Next steps</h4>
-          <ul className="sk-steps">{c.next.slice(0, 3).map((t) => <li key={t}><Link to="/my/profile">{t}</Link></li>)}</ul></>}
+          <ul className="sk-steps">{(c.steps ? c.steps.filter((x) => !x.done) : c.next.map((label) => ({ label, key: '' }))).slice(0, 3).map((x) => <li key={x.label}><Link to={'/my/profile' + (x.key ? '?focus=' + x.key : '')}>{x.label}</Link></li>)}</ul></>}
         {c.done.length > 0 && <div className="sk-tags">{c.done.map((t) => <span key={t} className="sk-tag ok">✓ {t.replace(/^(Add|Write) (your |a |the )?/, '')}</span>)}</div>}
       </div>
 
       <div className="sk-stats">
-        {[['Applications', s.total, 'Total applications'], ['Interviews', s.interview, 'Interview stage'], ['Under review', s.review, 'Being reviewed'], ['Accepted', s.accepted, 'Offers received']].map(([l, n, sub]) => (
-          <div key={l} className="card sk-stat"><span>{l}</span><b>{n}</b><small className="muted">{sub}</small></div>
+        {[['Applications', s.total, 'Total applications', ''], ['Interviews', s.interview, 'Interview stage', 'interview'], ['Under review', s.review, 'Being reviewed', 'review'], ['Accepted', s.accepted, 'Offers received', 'accepted']].map(([l, n, sub, f]) => (
+          <Link key={l} to={'/my/applications' + (f ? '?filter=' + f : '')} className="card sk-stat sk-statlink"><span>{l}</span><b>{n}</b><small className="muted">{sub}</small></Link>
         ))}
       </div>
 
@@ -89,8 +89,8 @@ export function Dashboard() {
           </div>
           <div className="card pad-card">
             <h3>Application status</h3>
-            {Object.entries(GROUP_LABEL).map(([k, l]) => <div key={k} className="sk-line"><span><i className={'dot p-' + k} />{l}</span><b>{s[k]}</b></div>)}
-            <div className="sk-line total"><span>Total</span><b>{s.total}</b></div>
+            {Object.entries(GROUP_LABEL).map(([k, l]) => <Link key={k} to={'/my/applications?filter=' + k} className="sk-line sk-linelink"><span><i className={'dot p-' + k} />{l}</span><b>{s[k]}</b></Link>)}
+            <Link to="/my/applications" className="sk-line total sk-linelink"><span>Total</span><b>{s.total}</b></Link>
           </div>
           <div className="card pad-card">
             <h3>Tips</h3>
@@ -110,7 +110,8 @@ export function Dashboard() {
 const PER = 10
 export function Applications() {
   const [items, setItems] = useState(null); const [err, setErr] = useState('')
-  const [q, setQ] = useState(''); const [filter, setFilter] = useState(''); const [page, setPage] = useState(0)
+  const [sp] = useSearchParams()
+  const [q, setQ] = useState(''); const [filter, setFilter] = useState(sp.get('filter') || ''); const [page, setPage] = useState(0)
   const [sort, setSort] = useState({ key: 'created_at', dir: 'desc' })
   const [sel, setSel] = useState([])
   const [cols, setCols] = useState({ company_name: true, location: true, created_at: true, status: true })
@@ -253,9 +254,9 @@ function useDraft(initial, save) {
   return { editing, draft, setDraft, open, close: () => setEditing(false), submit, busy, err }
 }
 
-function Frame({ title, hint, d, hasData, addLabel, onAdd, view, form }) {
+function Frame({ id, title, hint, d, hasData, addLabel, onAdd, view, form }) {
   return (
-    <div className="card pad-card sk-sec">
+    <div id={id} className="card pad-card sk-sec">
       <div className="sk-split"><div><h3>{title}</h3><p className="muted">{hint}</p></div>
         {hasData && !d.editing && <button className="btn btn-outline sm" onClick={() => onAdd()}>Edit</button>}</div>
       {d.editing ? (
@@ -272,7 +273,7 @@ function Frame({ title, hint, d, hasData, addLabel, onAdd, view, form }) {
 
 function TextSection({ p, save }) {
   const d = useDraft(p.summary || '', (v) => save({ summary: v }))
-  return <Frame title="Personal summary" hint="A short bio or introduction about yourself" d={d} hasData={!!p.summary} addLabel="Add summary" onAdd={() => d.open(p.summary || '')}
+  return <Frame id="sec-summary" title="Personal summary" hint="A short bio or introduction about yourself" d={d} hasData={!!p.summary} addLabel="Add summary" onAdd={() => d.open(p.summary || '')}
     view={<p className="sk-text">{p.summary}</p>}
     form={<textarea rows={5} maxLength={2000} value={d.draft} onChange={(e) => d.setDraft(e.target.value)} aria-label="Summary" />} />
 }
@@ -284,7 +285,7 @@ function SkillsSection({ p, save }) {
     if (!d.draft.some((x) => x.toLowerCase() === v.toLowerCase())) d.setDraft([...d.draft, v].slice(0, 40))
     setT('')
   }
-  return <Frame title="Skills" hint="Your professional skills and expertise" d={d} hasData={p.skills.length > 0} addLabel="Add skills" onAdd={() => d.open(p.skills)}
+  return <Frame id="sec-skills" title="Skills" hint="Your professional skills and expertise" d={d} hasData={p.skills.length > 0} addLabel="Add skills" onAdd={() => d.open(p.skills)}
     view={<div className="sk-tags">{p.skills.map((s) => <span key={s} className="sk-tag">{s}</span>)}</div>}
     form={<>
       <div className="sk-tags">{d.draft.map((s) => <span key={s} className="sk-tag">{s}<button type="button" aria-label={'Remove ' + s} onClick={() => d.setDraft(d.draft.filter((x) => x !== s))}>×</button></span>)}</div>
@@ -296,7 +297,7 @@ function SkillsSection({ p, save }) {
 function ListSection({ title, hint, addLabel, items, field, blank, fields, required, render, save }) {
   const d = useDraft(items, (v) => save({ [field]: v.filter((i) => (i[required] || '').trim()) }))
   const set = (i, k, v) => d.setDraft(d.draft.map((x, n) => (n === i ? { ...x, [k]: v } : x)))
-  return <Frame title={title} hint={hint} d={d} hasData={items.length > 0} addLabel={addLabel} onAdd={() => d.open(items.length ? items : [blank])}
+  return <Frame id={'sec-' + field} title={title} hint={hint} d={d} hasData={items.length > 0} addLabel={addLabel} onAdd={() => d.open(items.length ? items : [blank])}
     view={<div className="sk-items">{items.map((it, i) => <div key={i} className="sk-item">{render(it)}</div>)}</div>}
     form={<>
       {d.draft.map((it, i) => (
@@ -312,15 +313,69 @@ function ListSection({ title, hint, addLabel, items, field, blank, fields, requi
     </>} />
 }
 
+const RESUME_MAX_MB = 5
+// Multipart upload. api() sends JSON, so this one call uses fetch directly (same /api proxy as api()).
+async function uploadResume(file) {
+  const fd = new FormData(); fd.append('file', file)
+  let res
+  try { res = await fetch('/api/seeker/resume', { method: 'POST', headers: { Authorization: 'Bearer ' + getToken() }, body: fd }) }
+  catch { throw new Error('Cannot reach the server. Please try again.') }
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Upload failed. Please try again.')
+  return data
+}
+
+const RESUME_HINT = {
+  ok: ['ok', 'Your resume text is readable. Employers see how well it matches each job you apply to.'],
+  image: ['warn', 'This is an image, so its text cannot be read for job matching. Upload a PDF for the best results.'],
+  scanned: ['warn', 'This PDF looks scanned, so its text cannot be read. Upload a text-based PDF for job matching.'],
+  link: ['warn', 'Links cannot be read for job matching. Upload your resume as a PDF to be matched against jobs.'],
+  missing: ['warn', 'The resume file is missing on the server. Please upload it again.'],
+}
 function ResumeSection({ p, save }) {
-  const d = useDraft({ resume_url: p.resume_url || '', resume_name: p.resume_name || '' }, (v) => save(v))
-  return <Frame title="Resume / CV" hint="Link to your resume (Google Drive, Dropbox, etc.)" d={d} hasData={!!p.resume_url} addLabel="Add resume link"
-    onAdd={() => d.open({ resume_url: p.resume_url || '', resume_name: p.resume_name || '' })}
-    view={<a className="link" href={p.resume_url} target="_blank" rel="noopener noreferrer">{p.resume_name || 'View resume'} ↗</a>}
-    form={<>
-      <label>Resume link<input type="url" placeholder="https://" maxLength={500} value={d.draft.resume_url} onChange={(e) => d.setDraft({ ...d.draft, resume_url: e.target.value })} /></label>
-      <label>Display name (optional)<input maxLength={200} value={d.draft.resume_name} onChange={(e) => d.setDraft({ ...d.draft, resume_name: e.target.value })} /></label>
-    </>} />
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('')
+  const hint = p.resume_url ? RESUME_HINT[p.resume_state] : null
+  const isLink = p.resume_url && !p.resume_url.includes('/api/files/')
+  const d = useDraft({ resume_url: '', resume_name: '' }, (v) => save({ resume_url: v.resume_url.trim(), resume_name: v.resume_name.trim() }))
+  const pick = async (e) => {
+    const f = e.target.files?.[0]; e.target.value = ''
+    if (!f) return
+    if (f.size > RESUME_MAX_MB * 1024 * 1024) { setErr(`File is too large. Maximum size is ${RESUME_MAX_MB} MB.`); return }
+    setBusy(true); setErr('')
+    try { const r = await uploadResume(f); await save({ resume_url: r.resume_url, resume_name: r.resume_name }) }
+    catch (x) { setErr(x.message) } finally { setBusy(false) }
+  }
+  const remove = async () => {
+    if (!window.confirm('Remove your resume?')) return
+    setBusy(true); setErr('')
+    try { await api('/seeker/resume', { method: 'DELETE' }); await save({ resume_url: '', resume_name: '' }) }
+    catch (x) { setErr(x.message) } finally { setBusy(false) }
+  }
+  return (
+    <div id="sec-resume" className="card pad-card sk-sec">
+      <div className="sk-split"><div><h3>Resume / CV</h3><p className="muted">Upload a PDF, PNG or JPG (max {RESUME_MAX_MB} MB), or paste a link.</p></div></div>
+      {p.resume_url && <a className="link" href={p.resume_url} target="_blank" rel="noopener noreferrer">{p.resume_name || 'View resume'} ↗</a>}
+      {hint && <div className={'alert ' + (hint[0] === 'ok' ? 'ok' : 'warn')}>{hint[1]}</div>}
+      <div className="acts">
+        <label className="btn btn-primary sm" style={{ cursor: busy ? 'wait' : 'pointer' }}>
+          {busy ? 'Working…' : p.resume_url && !isLink ? 'Replace file' : 'Upload file'}
+          <input type="file" hidden disabled={busy} accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={pick} />
+        </label>
+        <button type="button" className="btn btn-outline sm" disabled={busy} onClick={() => d.open({ resume_url: isLink ? p.resume_url : '', resume_name: isLink ? p.resume_name || '' : '' })}>Use a link</button>
+        {p.resume_url && <button type="button" className="btn btn-ghost sm danger" disabled={busy} onClick={remove}>Remove</button>}
+      </div>
+      {err && <div className="alert">{err}</div>}
+      {d.editing && (
+        <form onSubmit={d.submit} className="form">
+          <label>Resume link<input type="url" required placeholder="https://" maxLength={500} value={d.draft.resume_url} onChange={(e) => d.setDraft({ ...d.draft, resume_url: e.target.value })} /></label>
+          <label>Display name (optional)<input maxLength={200} value={d.draft.resume_name} onChange={(e) => d.setDraft({ ...d.draft, resume_name: e.target.value })} /></label>
+          {d.err && <div className="alert">{d.err}</div>}
+          <div className="acts"><button className="btn btn-primary sm" disabled={d.busy}>{d.busy ? 'Saving…' : 'Save'}</button>
+            <button type="button" className="btn btn-outline sm" onClick={d.close}>Cancel</button></div>
+        </form>
+      )}
+    </div>
+  )
 }
 
 function BasicsForm({ p, save, onDone }) {
@@ -339,7 +394,7 @@ function BasicsForm({ p, save, onDone }) {
   }
   const s = (k) => (e) => setF({ ...f, [k]: e.target.value })
   return (
-    <form className="card pad-card form sk-block" onSubmit={submit}>
+    <form id="sec-basics" className="card pad-card form sk-block" onSubmit={submit}>
       <h3>Edit profile</h3>
       <div className="sk-two">
         <label>Full name<input value={f.full_name} maxLength={150} onChange={s('full_name')} /></label>
@@ -366,7 +421,24 @@ const month = (v) => { if (!v) return ''; const [y, m] = v.split('-'); return m 
 export function Profile() {
   const { user, refresh } = useAuth()
   const [p, setP] = useState(null); const [err, setErr] = useState(''); const [editing, setEditing] = useState(false)
+  const [sp] = useSearchParams(); const focus = sp.get('focus')
   useEffect(() => { api('/seeker/profile').then((r) => setP({ ...EMPTY, ...r })).catch((e) => setErr(e.message)) }, [])
+  // "Next steps" on the dashboard link here with ?focus=<step>: open the right form, scroll to it and highlight it
+  useEffect(() => {
+    if (!p || !focus) return
+    const basics = focus === 'basics' || focus === 'titles'
+    if (basics) setEditing(true)
+    const t = setTimeout(() => {
+      const el = document.getElementById(basics ? 'sec-basics' : 'sec-' + focus)
+      if (!el) return
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      el.classList.add('sk-flash'); setTimeout(() => el.classList.remove('sk-flash'), 2000)
+      if (!basics) el.querySelector('.sk-add')?.click()              // empty section: open its editor
+      if (focus === 'titles') el.querySelector('input[placeholder^="e.g. Accountant"]')?.focus()
+      if (focus === 'basics') el.querySelector('input[placeholder="e.g. Rawalpindi"]')?.focus()
+    }, 80)
+    return () => clearTimeout(t)
+  }, [p === null, focus]) // eslint-disable-line
   if (err) return <div className="alert">{err}</div>
   if (!p) return <div className="card skel tall" />
   const save = async (patch) => {            // the API replaces the whole profile, so always send it in full

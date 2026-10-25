@@ -14,14 +14,16 @@ def literal(v, dialect):
         return "'" + v.replace("'", "''") + "'"
     return None
 
-def run(dry=False):
+def missing_column_ddl(verbose=False):
+    """ALTER TABLE statements for columns that exist in models.py but not in the database yet."""
     dialect = engine.dialect.name
     insp = inspect(engine)
     tables = set(insp.get_table_names())
     todo = []
     for table in Base.metadata.sorted_tables:
         if table.name not in tables:
-            print("new table:", table.name)
+            if verbose:
+                print("new table:", table.name)
             continue
         have = {c["name"] for c in insp.get_columns(table.name)}
         for col in table.columns:
@@ -33,6 +35,22 @@ def run(dry=False):
             if lit is not None:
                 ddl += f" DEFAULT {lit}"
             todo.append(ddl)
+    return todo
+
+
+def add_missing_columns():
+    """Quiet and safe: called at every app start, so an update that adds a column never breaks a running site."""
+    todo = missing_column_ddl()
+    if todo:
+        with engine.begin() as conn:
+            for ddl in todo:
+                conn.execute(text(ddl))
+    return todo
+
+
+def run(dry=False):
+    dialect = engine.dialect.name
+    todo = missing_column_ddl(verbose=True)
     for ddl in todo:
         print(("would run: " if dry else "running: ") + ddl)
     if dry:

@@ -2,8 +2,8 @@
 const ROOT = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '').replace(/\/api$/, '')
 export const API = ROOT + '/api'
 
-export const getToken = () => localStorage.getItem('token')
-export const setToken = (t) => (t ? localStorage.setItem('token', t) : localStorage.removeItem('token'))
+export const getToken = () => sessionStorage.getItem('token')
+export const setToken = (t) => (t ? sessionStorage.setItem('token', t) : sessionStorage.removeItem('token'))
 
 async function request(path, { method = 'GET', body, form } = {}) {
   const headers = {}

@@ -5,15 +5,27 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import Session
 from .database import get_db
-from .models import Job, Company, User, Application, make_hash
+from .models import Job, Company, User, Application, SeekerProfile, make_hash
+from .matching import match_score
 from .schemas import JobIn, EmployerJobOut
 from .security import require_role
 from .services import get_require_approval, apply_job_fields, resolve_location, delete_jobs, notify
+from .resume_parser import read_resume
 
 router = APIRouter(prefix="/api/employer", tags=["employer"])
 
-CANDIDATE_STATUSES = ("new", "reviewing", "contacting", "interviewing", "rejected", "hired")
+CANDIDATE_STATUSES = ("new", "reviewing", "shortlisted", "contacting", "interviewing", "rejected", "hired")
 JOB_STATUSES = ("pending", "published", "paused", "closed", "rejected")
+
+def profile_text(p) -> str:
+    """Text built from the applicant's profile (skills, summary, titles, experience). Used only when the resume cannot be read."""
+    if not p:
+        return ""
+    parts = [" ".join(p.skills or []), p.summary or "", " ".join(p.job_titles or [])]
+    for e in (p.experience or []):
+        if isinstance(e, dict):
+            parts += [str(e.get("title") or ""), str(e.get("description") or "")]
+    return "\n".join(x for x in parts if x).strip()
 
 def share(job: Job) -> None:
     try:
@@ -55,7 +67,7 @@ def dashboard(user: User = Depends(require_role("employer")), db: Session = Depe
                                            .group_by(Job.status)).all()}
     apps = {r[0]: r[1] for r in db.execute(
         select(Application.status, func.count()).select_from(Application)
-        .join(Job, Job.id == Application.job_id).where(Job.company_id == company.id)
+        .join(Job, Job.id == Application.job_id).where(Job.company_id == company.id, Application.skipped.is_not(True))
         .group_by(Application.status)).all()}
     return {
         "company": {"name": company.name, "domain_verified": company.domain_verified},
@@ -162,64 +174,156 @@ class CandidateOut(BaseModel):
     job_title: str
     applicant_name: str | None
     applicant_email: str
+    applicant_title: str | None = None
+    applicant_location: str | None = None
+    applicant_skills: list[str] = []
     cover_letter: str | None
     resume_url: str | None
     status: str
+    skipped: bool = False
     created_at: datetime
+    # skill match against the job post (see matching.py)
+    match_scored: bool = False
+    match: int = 0
+    match_level: str = "none"          # top | good | low | none
+    matched_skills: list[str] = []
+    missing_skills: list[str] = []
+    match_score: int = 0               # same value as `match` (0-100)
+    match_source: str = "resume"       # resume | profile (profile = resume unreadable, scored from profile skills)
+    resume_state: str = "none"         # ok | none | link | image | scanned | missing | unreadable
+    answers: list[dict] = []           # answers to the job's screening questions
 
 class CandidatesOut(BaseModel):
     counts: dict[str, int]
     items: list[CandidateOut]
 
 @router.get("/candidates", response_model=CandidatesOut)
-def candidates(job_id: int | None = None, status: str = "", q: str = "", limit: int = 100, offset: int = 0,
+def candidates(job_id: int | None = None, status: str = "", q: str = "", skipped: bool = False,
+               min_match: int = 0, sort: Literal["match", "newest"] = "match", limit: int = 200, offset: int = 0,
                user: User = Depends(require_role("employer")), db: Session = Depends(get_db)):
     company = get_company(db, user)
-
-    cstmt = (select(Application.status, func.count()).select_from(Application)
-             .join(Job, Job.id == Application.job_id).where(Job.company_id == company.id))
-    if job_id:
-        cstmt = cstmt.where(Job.id == job_id)
-    by_status = {r[0]: r[1] for r in db.execute(cstmt.group_by(Application.status)).all()}
-    counts = {"all": sum(by_status.values()), **{s: by_status.get(s, 0) for s in CANDIDATE_STATUSES}}
-
-    stmt = (select(Application, Job, User).join(Job, Job.id == Application.job_id)
-            .join(User, User.id == Application.user_id).where(Job.company_id == company.id))
+    stmt = (select(Application, Job, User, SeekerProfile).join(Job, Job.id == Application.job_id)
+            .join(User, User.id == Application.user_id)
+            .outerjoin(SeekerProfile, SeekerProfile.user_id == User.id).where(Job.company_id == company.id))
     if job_id:
         stmt = stmt.where(Job.id == job_id)
-    if status:
-        stmt = stmt.where(Application.status == status)
-    if q:
-        like = f"%{q}%"
-        stmt = stmt.where(or_(User.email.ilike(like), User.full_name.ilike(like), Job.title.ilike(like)))
-    rows = db.execute(stmt.order_by(Application.created_at.desc()).limit(min(limit, 200)).offset(offset)).all()
-    items = [CandidateOut(id=a.id, job_id=j.id, job_title=j.title, applicant_name=u.full_name,
-                          applicant_email=u.email, cover_letter=a.cover_letter, resume_url=a.resume_url,
-                          status=a.status, created_at=a.created_at) for a, j, u in rows]
+    rows = db.execute(stmt.order_by(Application.created_at.desc()).limit(1000)).all()
+
+    scored = []
+    dirty = False
+    for a, j, u, p in rows:
+        # match_score() needs the resume TEXT (a string), not the SeekerProfile object
+        url = a.resume_url or (p.resume_url if p else None)       # fall back to the profile resume
+        text, state = a.resume_text or "", "ok"
+        if not text:                                               # not read yet (or nothing readable last time)
+            if p and p.resume_text and url == p.resume_url:
+                text = p.resume_text
+            else:
+                text, state = read_resume(url)                      # file on disk, or a downloaded PDF link
+            if text:
+                a.resume_text = text                                # remember it on the application
+                dirty = True
+        rs = "ok" if text else (state if state != "ok" else "none")   # why the resume cannot be matched: none | link | image | scanned | missing | unreadable
+        source = "resume"
+        if not text:                                               # resume unreadable: fall back to the profile so a score still shows
+            ptxt = profile_text(p)
+            if ptxt:
+                text, source = ptxt, "profile"
+            print(f"[candidates] app {a.id}: resume {rs} (url={url!r}), scoring from {source}")
+        m = match_score(j.title, j.description or "", text)
+        m["source"] = source
+        scored.append((a, j, u, p, m, rs))
+
+    # tab counts ignore the status filter but respect job / skipped
+    live = [r for r in scored if not r[0].skipped]
+    by_status: dict[str, int] = {}
+    for a, *_ in live:
+        by_status[a.status] = by_status.get(a.status, 0) + 1
+    counts = {"all": len(live), "skipped": sum(1 for r in scored if r[0].skipped),
+              **{s: by_status.get(s, 0) for s in CANDIDATE_STATUSES},
+              "top": sum(1 for a, j, u, p, m, rs in live if m["level"] == "top" and a.status in ("new", "reviewing"))}
+
+    like = q.lower().strip()
+    out = []
+    for a, j, u, p, m, rs in scored:
+        if bool(a.skipped) != skipped:
+            continue
+        if status and a.status != status:
+            continue
+        if min_match and m["score"] < min_match:
+            continue
+        if like and like not in " ".join([u.email, u.full_name or "", j.title]).lower():
+            continue
+        titles = (p.job_titles if p else None) or []
+        out.append((a, CandidateOut(
+            id=a.id, job_id=j.id, job_title=j.title, applicant_name=u.full_name, applicant_email=u.email,
+            applicant_title=titles[0] if titles else None, applicant_location=p.location if p else None,
+            applicant_skills=((p.skills if p else None) or [])[:12], cover_letter=a.cover_letter, resume_url=a.resume_url,
+            status=a.status, skipped=bool(a.skipped), created_at=a.created_at, match_scored=m["scored"], match=m["score"],
+            match_level=m["level"], matched_skills=m["matched"], missing_skills=m["missing"],
+            match_score=m["score"], match_source=m.get("source", "resume"), resume_state=rs, answers=a.answers or [])))
+    if sort == "match":
+        out.sort(key=lambda r: (r[1].match, r[0].created_at), reverse=True)     # best match first, newest as tie-break
+    items = [o for _, o in out][offset:offset + min(limit, 500)]
+    if dirty:
+        db.commit()                 # save the resume text we just read (done last so rows are not reloaded)
     return {"counts": counts, "items": items}
 
-class CandidateStatusIn(BaseModel):
-    status: Literal["new", "reviewing", "contacting", "interviewing", "rejected", "hired"]
+TEXTS = {"reviewing": "viewed your application.", "shortlisted": "shortlisted you for", "contacting": "wants to contact you about",
+         "interviewing": "invited you to interview for", "hired": "marked you as hired for", "rejected": "did not select you for"}
+
+def apply_status(db: Session, company: Company, app: Application, job: Job, status: str) -> None:
+    changed = app.status != status
+    app.status = status
+    if changed and status in TEXTS:
+        t = TEXTS[status]
+        notify(db, app.user_id, f"{company.name} {t}" + ("" if t.endswith(".") else f" {job.title}."), "/my/applications")
+
+class CandidatePatch(BaseModel):
+    status: Literal["new", "reviewing", "shortlisted", "contacting", "interviewing", "rejected", "hired"] | None = None
+    skipped: bool | None = None          # True = hide this application (no notification); False = bring it back
 
 @router.patch("/candidates/{app_id}")
-def set_candidate_status(app_id: int, data: CandidateStatusIn,
+def set_candidate_status(app_id: int, data: CandidatePatch,
                          user: User = Depends(require_role("employer")), db: Session = Depends(get_db)):
     company = get_company(db, user)
     app = db.get(Application, app_id)
     job = db.get(Job, app.job_id) if app else None
     if not app or not job or job.company_id != company.id:
         raise HTTPException(404, "Application not found")
-    changed = app.status != data.status
-    app.status = data.status
-    texts = {"reviewing": "viewed your application.", "contacting": "wants to contact you about",
-             "interviewing": "invited you to interview for", "hired": "marked you as hired for",
-             "rejected": "did not select you for"}
-    if changed and data.status in texts:
-        t = texts[data.status]
-        msg = f"{company.name} {t}" + ("" if t.endswith(".") else f" {job.title}.")
-        notify(db, app.user_id, msg, "/my/applications")
+    if data.status is None and data.skipped is None:
+        raise HTTPException(422, "Nothing to change")
+    if data.status is not None:
+        apply_status(db, company, app, job, data.status)
+    if data.skipped is not None:
+        app.skipped = data.skipped
     db.commit()
-    return {"id": app.id, "status": app.status}
+    return {"id": app.id, "status": app.status, "skipped": bool(app.skipped)}
+
+class CandidateBulkIn(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=200)
+    action: Literal["shortlist", "reject", "skip", "restore"]
+
+@router.post("/candidates/bulk")
+def candidates_bulk(data: CandidateBulkIn, user: User = Depends(require_role("employer")), db: Session = Depends(get_db)):
+    """Act on many applications at once. Only the employer's own applications are touched."""
+    company = get_company(db, user)
+    rows = db.execute(select(Application, Job).join(Job, Job.id == Application.job_id)
+                      .where(Application.id.in_(data.ids), Job.company_id == company.id)).all()
+    n = 0
+    for app, job in rows:
+        if data.action == "shortlist":
+            if app.status in ("new", "reviewing"):        # never move someone backwards (interviewing, hired...)
+                apply_status(db, company, app, job, "shortlisted"); n += 1
+        elif data.action == "reject":
+            if app.status not in ("rejected", "hired"):
+                apply_status(db, company, app, job, "rejected"); n += 1
+        elif data.action == "skip":
+            app.skipped = True; n += 1
+        else:
+            app.skipped = False; n += 1
+    db.commit()
+    return {"affected": n}
 
 # ---------- company profile ----------
 class CompanyIn(BaseModel):

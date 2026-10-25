@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     telegram_share_aggregated: bool = False   # employer jobs are always shared
     site_url: str = "http://localhost:5173"   # used for links in Telegram posts
     stale_job_days: int = 30
+    upload_dir: str = "uploads"               # resumes are stored here (swap for S3/R2 later, see storage.py)
+    max_upload_mb: int = 5
+    public_base_url: str = ""                 # e.g. https://api.mysite.com ; empty = same origin / dev proxy
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

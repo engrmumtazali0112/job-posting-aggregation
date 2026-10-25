@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import PanelLayout from '../components/PanelLayout.jsx'
 import JobForm, { toForm } from '../components/JobForm.jsx'
-import { Badge, AppStatus, Pager, Stat } from '../components/ui.jsx'
+import { Badge, Pager, Stat } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
 import { useAuth } from '../auth.jsx'
 import { api, qs, timeAgo } from '../api'
@@ -64,6 +64,8 @@ export function LandingPage() {
 }
 
 /* ---------------- dashboard ---------------- */
+const SL = ({ to, children }) => <Link to={to} className="stat-link">{children}</Link>
+const D = '/employer/dashboard'
 export function Dashboard() {
   const [d, setD] = useState(null); const [err, setErr] = useState('')
   useEffect(() => { api('/employer/dashboard').then(setD).catch((e) => setErr(e.message)) }, [])
@@ -75,34 +77,98 @@ export function Dashboard() {
       {!d.company.domain_verified && <div className="alert warn">Your company is not verified yet. Add your website in <Link className="link" to="/employer/dashboard/company">Company profile</Link>; an admin will verify it.</div>}
       {d.jobs.pending > 0 && <div className="alert warn">{d.jobs.pending} job(s) are waiting for admin approval.</div>}
       <h3 className="sub-h">Jobs</h3>
-      <div className="stats"><Stat label="Live" value={d.jobs.published} /><Stat label="Pending" value={d.jobs.pending} /><Stat label="Paused" value={d.jobs.paused} /><Stat label="Closed" value={d.jobs.closed} /></div>
+      <div className="stats">
+        <SL to={D + '/jobs?status=published'}><Stat label="Live" value={d.jobs.published} /></SL>
+        <SL to={D + '/jobs?status=pending'}><Stat label="Pending" value={d.jobs.pending} /></SL>
+        <SL to={D + '/jobs?status=paused'}><Stat label="Paused" value={d.jobs.paused} /></SL>
+        <SL to={D + '/jobs?status=closed'}><Stat label="Closed" value={d.jobs.closed} /></SL>
+      </div>
       <h3 className="sub-h">Candidates</h3>
-      <div className="stats"><Stat label="Total" value={d.applications.total} /><Stat label="New" value={d.applications.new} /><Stat label="Interviewing" value={d.applications.interviewing} /><Stat label="Hired" value={d.applications.hired} /></div>
+      <div className="stats">
+        <SL to={D + '/candidates'}><Stat label="Total" value={d.applications.total} /></SL>
+        <SL to={D + '/candidates?status=new'}><Stat label="New" value={d.applications.new} /></SL>
+        <SL to={D + '/candidates?status=shortlisted'}><Stat label="Shortlisted" value={d.applications.shortlisted} /></SL>
+        <SL to={D + '/candidates?status=interviewing'}><Stat label="Interviewing" value={d.applications.interviewing} /></SL>
+        <SL to={D + '/candidates?status=hired'}><Stat label="Hired" value={d.applications.hired} /></SL>
+      </div>
       <div className="acts" style={{ marginTop: 24 }}><Link className="btn btn-primary" to="/employer/dashboard/post">Post a job</Link><Link className="btn btn-outline" to="/employer/dashboard/candidates">View candidates</Link></div>
     </>
   )
 }
 
+/* ---------------- application questions (screening) ---------------- */
+const Q_PRESETS = [
+  ["Bachelor's degree", { text: "Have you completed your Bachelor's degree?", type: 'yes_no', ideal: 'yes' }],
+  ['Current salary', { text: 'What is your current salary (Rs per month)?', type: 'number' }],
+  ['Expected salary', { text: 'What is your expected salary (Rs per month)?', type: 'number' }],
+  ['Notice period', { text: 'What is your notice period?', type: 'choice', options: 'Immediately, 2 weeks, 1 month, 2+ months' }],
+  ['Years of experience', { text: 'How many years of experience do you have?', type: 'number' }],
+]
+const Q_TYPES = { yes_no: 'Yes / No', number: 'Number', choice: 'Multiple choice', text: 'Written answer' }
+let qKey = 0
+const newQ = (q = {}) => ({ key: ++qKey, text: '', type: 'text', required: true, options: '', ideal: '', ...q })
+const questionsFromApi = (list) => (list || []).map((q) => newQ({ text: q.text, type: q.type, required: q.required, options: (q.options || []).join(', '), ideal: q.ideal || '' }))
+const questionsToApi = (list) => list.filter((q) => q.text.trim()).map((q) => {
+  const options = q.type === 'choice' ? q.options.split(',').map((x) => x.trim()).filter(Boolean) : []
+  if (q.type === 'choice' && options.length < 2) throw new Error(`The question "${q.text.trim()}" needs at least two options, separated by commas.`)
+  return { text: q.text.trim(), type: q.type, required: q.required, options, ideal: q.type === 'yes_no' && q.ideal ? q.ideal : null }
+})
+
+function QuestionsEditor({ value, onChange }) {
+  const set = (key, patch) => onChange(value.map((q) => (q.key === key ? { ...q, ...patch } : q)))
+  const move = (i, d) => { const v = [...value]; const j = i + d; if (j < 0 || j >= v.length) return; [v[i], v[j]] = [v[j], v[i]]; onChange(v) }
+  const full = value.length >= 10
+  return (
+    <div className="card pad-card qe">
+      <h3>Application questions <span className="muted">(optional)</span></h3>
+      <p className="muted">Applicants answer these when they apply. You see the answers on the Candidates page.</p>
+      <div className="qe-presets">
+        {Q_PRESETS.map(([label, q]) => <button key={label} type="button" className="btn btn-outline sm" disabled={full || value.some((x) => x.text === q.text)} onClick={() => onChange([...value, newQ(q)])}>+ {label}</button>)}
+        <button type="button" className="btn btn-primary sm" disabled={full} onClick={() => onChange([...value, newQ()])}>+ New question</button>
+      </div>
+      {value.map((q, i) => (
+        <div className="qe-row" key={q.key}>
+          <div className="qe-top">
+            <input value={q.text} maxLength={200} placeholder="Type your question" onChange={(e) => set(q.key, { text: e.target.value })} aria-label={'Question ' + (i + 1)} />
+            <select value={q.type} onChange={(e) => set(q.key, { type: e.target.value })} aria-label="Answer type">{Object.entries(Q_TYPES).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+          </div>
+          <div className="qe-sub">
+            <label className="chk"><input type="checkbox" checked={q.required} onChange={(e) => set(q.key, { required: e.target.checked })} /> Required</label>
+            {q.type === 'yes_no' && <select className="mini" value={q.ideal} onChange={(e) => set(q.key, { ideal: e.target.value })} aria-label="Preferred answer"><option value="">Any answer is fine</option><option value="yes">I prefer Yes</option><option value="no">I prefer No</option></select>}
+            {q.type === 'choice' && <input className="qe-opts" value={q.options} placeholder="Options, separated by commas" onChange={(e) => set(q.key, { options: e.target.value })} aria-label="Options" />}
+            <span className="qe-btns">
+              <button type="button" className="btn btn-ghost sm" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up">↑</button>
+              <button type="button" className="btn btn-ghost sm" onClick={() => move(i, 1)} disabled={i === value.length - 1} aria-label="Move down">↓</button>
+              <button type="button" className="btn btn-ghost sm danger" onClick={() => onChange(value.filter((x) => x.key !== q.key))}>Remove</button>
+            </span>
+          </div>
+        </div>))}
+    </div>
+  )
+}
+
 export function PostJob() {
-  const nav = useNavigate()
+  const nav = useNavigate(); const [questions, setQuestions] = useState([])
   return (
     <>
       <h1 className="page-title">Post a job</h1>
-      <JobForm submitLabel="Submit job" onSubmit={async (body) => { await api('/employer/jobs', { method: 'POST', body }); nav('/employer/dashboard/jobs') }} />
+      <QuestionsEditor value={questions} onChange={setQuestions} />
+      <JobForm submitLabel="Submit job" onSubmit={async (body) => { await api('/employer/jobs', { method: 'POST', body: { ...body, questions: questionsToApi(questions) } }); nav('/employer/dashboard/jobs') }} />
     </>
   )
 }
 
 export function EditJob() {
   const { id } = useParams(); const nav = useNavigate()
-  const [job, setJob] = useState(null); const [err, setErr] = useState('')
-  useEffect(() => { api('/employer/jobs/' + id).then(setJob).catch((e) => setErr(e.message)) }, [id])
+  const [job, setJob] = useState(null); const [err, setErr] = useState(''); const [questions, setQuestions] = useState([])
+  useEffect(() => { api('/employer/jobs/' + id).then((j) => { setJob(j); setQuestions(questionsFromApi(j.questions)) }).catch((e) => setErr(e.message)) }, [id])
   if (err) return <div className="alert">{err}</div>
   if (!job) return <div className="card skel" />
   return (
     <>
       <h1 className="page-title">Edit job</h1>
-      <JobForm initial={toForm(job)} submitLabel="Save changes" onSubmit={async (body) => { await api('/employer/jobs/' + id, { method: 'PUT', body }); nav('/employer/dashboard/jobs') }} />
+      <QuestionsEditor value={questions} onChange={setQuestions} />
+      <JobForm initial={toForm(job)} submitLabel="Save changes" onSubmit={async (body) => { await api('/employer/jobs/' + id, { method: 'PUT', body: { ...body, questions: questionsToApi(questions) } }); nav('/employer/dashboard/jobs') }} />
     </>
   )
 }
@@ -110,7 +176,8 @@ export function EditJob() {
 /* ---------------- my jobs ---------------- */
 const JOB_TABS = ['', 'published', 'pending', 'paused', 'closed', 'rejected']
 export function MyJobs() {
-  const [status, setStatus] = useState(''); const [q, setQ] = useState(''); const [jobs, setJobs] = useState(null); const [note, setNote] = useState('')
+  const [sp] = useSearchParams()
+  const [status, setStatus] = useState(sp.get('status') || ''); const [q, setQ] = useState(''); const [jobs, setJobs] = useState(null); const [note, setNote] = useState('')
   const load = () => api('/employer/jobs?' + qs({ status, q })).then(setJobs).catch((e) => setNote(e.message))
   useEffect(() => { load() }, [status]) // eslint-disable-line
   const act = async (j, action) => { try { await api(`/employer/jobs/${j.id}/status`, { method: 'POST', body: { action } }); load() } catch (e) { setNote(e.message) } }
@@ -140,54 +207,139 @@ export function MyJobs() {
 }
 
 /* ---------------- candidates ---------------- */
-const CSTAT = ['new', 'reviewing', 'contacting', 'interviewing', 'rejected', 'hired']
-export function Candidates() {
-  const nav = useNavigate()
-  const [params, setParams] = useState(() => new URLSearchParams(location.search))
-  const [jobId, setJobId] = useState(params.get('job') || ''); const [status, setStatus] = useState(''); const [q, setQ] = useState('')
-  const [data, setData] = useState(null); const [jobs, setJobs] = useState([]); const [open, setOpen] = useState(null); const [note, setNote] = useState('')
-  const load = () => api('/employer/candidates?' + qs({ job_id: jobId, status, q })).then(setData).catch((e) => setNote(e.message))
-  useEffect(() => { api('/employer/jobs').then(setJobs).catch(() => {}) }, [])
-  useEffect(() => { load() }, [jobId, status]) // eslint-disable-line
+const CSTAT = ['new', 'reviewing', 'shortlisted', 'contacting', 'interviewing', 'rejected', 'hired']
+// the next hiring step offered on each card
+const NEXT = { new: ['shortlisted', 'Shortlist'], reviewing: ['shortlisted', 'Shortlist'], shortlisted: ['interviewing', 'Invite to interview'],
+  contacting: ['interviewing', 'Invite to interview'], interviewing: ['hired', 'Mark hired'] }
 
-  const setS = async (c, s) => {
-    try { await api('/employer/candidates/' + c.id, { method: 'PATCH', body: { status: s } }); load() } catch (e) { setNote(e.message) }
+const RESUME_NOTE = {
+  none: 'No resume uploaded', link: 'Resume is a link, so it cannot be read', image: 'Image resume: text cannot be read (a PDF is best)',
+  scanned: 'Scanned PDF: text cannot be read', missing: 'Resume file is missing', ok: 'Resume has no matching skills',
+}
+function MatchBadge({ c }) {
+  if (!c.match_scored) return <span className="match m-none" title={RESUME_NOTE[c.resume_state]}>No readable resume</span>
+  const fromProfile = c.match_source === 'profile'
+  return <span className={'match m-' + c.match_level} title={fromProfile ? 'Resume could not be read (' + (RESUME_NOTE[c.resume_state] || '') + '), so this score uses the skills on the applicant profile' : "Share of the job's skills found in the applicant's resume"}>{c.match_level === 'top' ? '★ ' : ''}{c.match}% match{fromProfile ? ' *' : ''}</span>
+}
+const Chips = ({ ok = [], miss = [], max = 5 }) => (ok.length || miss.length) ? (
+  <span className="chips">
+    {ok.slice(0, max).map((t) => <i key={'o' + t} className="chip ok">{t}</i>)}
+    {miss.slice(0, 3).map((t) => <i key={'m' + t} className="chip miss" title="Required by the job, not on the profile">{t}</i>)}
+  </span>) : null
+
+export function Candidates() {
+  const nav = useNavigate(); const [sp] = useSearchParams()
+  const [jobId, setJobId] = useState(sp.get('job') || ''); const [status, setStatus] = useState(sp.get('status') || '')
+  const [minMatch, setMinMatch] = useState(sp.get('min') || ''); const [sort, setSort] = useState('match'); const [q, setQ] = useState('')
+  const [data, setData] = useState(null); const [jobs, setJobs] = useState([]); const [open, setOpen] = useState(null)
+  const [note, setNote] = useState(''); const [info, setInfo] = useState(''); const [sel, setSel] = useState([])
+  const skippedTab = status === 'skipped'
+  const load = () => api('/employer/candidates?' + qs({ job_id: jobId, status: skippedTab ? '' : status, skipped: skippedTab ? 'true' : '', min_match: minMatch, sort, q }))
+    .then((d) => { setData(d); setSel([]) }).catch((e) => setNote(e.message))
+  useEffect(() => { api('/employer/jobs').then(setJobs).catch(() => {}) }, [])
+  useEffect(() => { load() }, [jobId, status, minMatch, sort]) // eslint-disable-line
+
+  const patch = async (c, body) => {
+    setNote(''); setInfo('')
+    try { await api('/employer/candidates/' + c.id, { method: 'PATCH', body }); load() } catch (e) { setNote(e.message) }
+  }
+  const nameOf = (c) => c.applicant_name || c.applicant_email
+  const reject = (c) => { if (window.confirm(`Reject ${nameOf(c)}? They will be notified.`)) patch(c, { status: 'rejected' }) }
+  const bulk = async (action, ids = sel) => {
+    if (!ids.length) return
+    const text = { shortlist: `Shortlist ${ids.length} candidate(s)? They will be notified.`, reject: `Reject ${ids.length} candidate(s)? They will be notified.`,
+      skip: `Skip ${ids.length} application(s)? They are hidden from this list and nobody is notified.`, restore: `Restore ${ids.length} application(s)?` }[action]
+    if (!window.confirm(text)) return
+    setNote(''); setInfo('')
+    try { const r = await api('/employer/candidates/bulk', { method: 'POST', body: { ids, action } }); setInfo(`${r.affected} application(s) updated.`); load() }
+    catch (e) { setNote(e.message) }
   }
   const toggle = (c) => {
     const o = open === c.id ? null : c.id
     setOpen(o)
-    if (o && c.status === 'new') setS(c, 'reviewing')      // opening a new application marks it viewed and notifies the candidate
+    if (o && c.status === 'new' && !c.skipped) patch(c, { status: 'reviewing' })      // opening a new application marks it viewed and notifies the candidate
   }
+  const toggleSel = (id) => setSel((x) => (x.includes(id) ? x.filter((i) => i !== id) : [...x, id]))
+  const items = data?.items || []
+  const allOn = items.length > 0 && sel.length === items.length
+  const topIds = items.filter((c) => c.match_level === 'top' && ['new', 'reviewing'].includes(c.status)).map((c) => c.id)
+
   return (
     <>
       <h1 className="page-title">Candidates</h1>
+      <p className="muted" style={{ marginBottom: 12 }}>Applicants are ranked by how well their resume matches the job post. Shortlist the best, reject or skip the rest.</p>
       <div className="tabs">
         <button className={status === '' ? 'on' : ''} onClick={() => setStatus('')}>all {data ? `(${data.counts.all})` : ''}</button>
         {CSTAT.map((s) => <button key={s} className={status === s ? 'on' : ''} onClick={() => setStatus(s)}>{s} {data ? `(${data.counts[s]})` : ''}</button>)}
+        <button className={skippedTab ? 'on' : ''} onClick={() => setStatus('skipped')}>skipped {data ? `(${data.counts.skipped})` : ''}</button>
       </div>
       <form className="toolbar" onSubmit={(e) => { e.preventDefault(); load() }}>
         <input placeholder="Search name, email or job" value={q} onChange={(e) => setQ(e.target.value)} />
         <select value={jobId} onChange={(e) => setJobId(e.target.value)}><option value="">All jobs</option>{jobs.map((j) => <option key={j.id} value={j.id}>{j.title}</option>)}</select>
+        <select value={minMatch} onChange={(e) => setMinMatch(e.target.value)} title="Hide weak matches"><option value="">Any match</option><option value="45">45% and up</option><option value="70">70% and up</option></select>
+        <select value={sort} onChange={(e) => setSort(e.target.value)}><option value="match">Best match first</option><option value="newest">Newest first</option></select>
         <button className="btn btn-outline sm">Search</button>
       </form>
       {note && <div className="alert">{note}</div>}
-      {data === null ? <div className="card skel" /> : data.items.length === 0 ? <div className="card empty">No candidates yet.</div> : data.items.map((c) => (
-        <div className="card cand" key={c.id}>
-          <div className="row nob" onClick={() => toggle(c)} style={{ cursor: 'pointer' }}>
-            <div className="grow"><strong>{c.applicant_name || c.applicant_email}</strong><span className="muted">{c.job_title} · {timeAgo(c.created_at)}</span></div>
-            <AppStatus s={c.status} /><Icon name="chevron" size={18} />
-          </div>
-          {open === c.id && (
-            <div className="cand-more">
-              <div className="muted">{c.applicant_email}</div>
-              <div><strong>Cover letter</strong><div className="pre">{c.cover_letter || '—'}</div></div>
-              <div><strong>Resume</strong><div>{c.resume_url ? <a className="link pre" href={c.resume_url} target="_blank" rel="noopener noreferrer">{c.resume_url}</a> : '—'}</div></div>
-              <div className="cand-actions">
-                <select className="mini" value={c.status} onChange={(e) => setS(c, e.target.value)}>{CSTAT.map((s) => <option key={s}>{s}</option>)}</select>
-                <button className="btn btn-primary sm" onClick={() => nav('/messages?app=' + c.id)}>Message</button>
+      {info && <div className="alert ok">{info}</div>}
+      {!skippedTab && topIds.length > 0 && (
+        <div className="alert ok top-banner">
+          <span>★ <strong>{topIds.length}</strong> top match{topIds.length === 1 ? '' : 'es'} waiting for review.</span>
+          <button className="btn btn-primary sm" onClick={() => bulk('shortlist', topIds)}>Shortlist top matches</button>
+        </div>)}
+      {items.length > 0 && (
+        <div className="bulkbar">
+          <label className="chk"><input type="checkbox" checked={allOn} onChange={() => setSel(allOn ? [] : items.map((c) => c.id))} /> Select all</label>
+          {sel.length > 0 && <>
+            <span className="muted">{sel.length} selected</span>
+            {skippedTab ? <button className="btn btn-primary sm" onClick={() => bulk('restore')}>Restore</button> : <>
+              <button className="btn btn-primary sm" onClick={() => bulk('shortlist')}>Shortlist</button>
+              <button className="btn btn-outline sm" onClick={() => bulk('skip')}>Skip</button>
+              <button className="btn btn-ghost sm danger" onClick={() => bulk('reject')}>Reject</button></>}
+          </>}
+        </div>)}
+      {data === null ? <div className="card skel" /> : items.length === 0
+        ? <div className="card empty">{skippedTab ? 'No skipped applications.' : 'No candidates here.'}</div>
+        : items.map((c) => {
+          const next = NEXT[c.status]
+          return (
+            <div className={'card cand' + (c.match_level === 'top' && !c.skipped ? ' cand-top' : '')} key={c.id}>
+              <div className="row nob">
+                <input type="checkbox" checked={sel.includes(c.id)} onChange={() => toggleSel(c.id)} aria-label={'Select ' + nameOf(c)} />
+                <div className="grow" onClick={() => toggle(c)} style={{ cursor: 'pointer' }}>
+                  <strong>{nameOf(c)}</strong>
+                  <span className="muted">{c.job_title}{c.applicant_title ? ' · ' + c.applicant_title : ''}{c.applicant_location ? ' · ' + c.applicant_location : ''} · {timeAgo(c.created_at)}</span>
+                  {c.match_scored ? <Chips ok={c.matched_skills} miss={c.missing_skills} /> : <span className="muted small ms-note">{RESUME_NOTE[c.resume_state]}</span>}
+                  {c.match_scored && c.match_source === 'profile' && <span className="muted small ms-note">* Resume unreadable, scored from profile skills</span>}
+                </div>
+                <MatchBadge c={c} />
+                <span className={'status s-' + c.status}>{c.status}</span>
+                <span onClick={() => toggle(c)} style={{ cursor: 'pointer' }}><Icon name="chevron" size={18} /></span>
               </div>
-            </div>)}
-        </div>))}
+              <div className="cand-quick">
+                {c.skipped ? <button className="btn btn-primary sm" onClick={() => patch(c, { skipped: false })}>Restore</button> : <>
+                  {next && <button className="btn btn-primary sm" onClick={() => patch(c, { status: next[0] })}>{next[1]}</button>}
+                  <button className="btn btn-outline sm" onClick={() => nav('/messages?app=' + c.id)}>Message</button>
+                  {!['rejected', 'hired'].includes(c.status) && <button className="btn btn-ghost sm danger" onClick={() => reject(c)}>Reject</button>}
+                  <button className="btn btn-ghost sm" title="Hide without telling the applicant" onClick={() => patch(c, { skipped: true })}>Skip</button></>}
+              </div>
+              {open === c.id && (
+                <div className="cand-more">
+                  <div className="muted">{c.applicant_email}</div>
+                  {c.answers.length > 0 && <div><strong>Application answers</strong>
+                    <ul className="qa">{c.answers.map((x, i) => <li key={i}><span className="muted">{x.question}</span><b>{x.answer}{x.ok === true && <i className="qa-ok"> ✓ as hoped</i>}{x.ok === false && <i className="qa-no"> ✗ not preferred</i>}</b></li>)}</ul></div>}
+                  {c.match_scored && <div><strong>Skill match (from resume)</strong>
+                    <div className="chips big">{c.matched_skills.map((t) => <i key={'o' + t} className="chip ok">✓ {t}</i>)}{c.missing_skills.map((t) => <i key={'m' + t} className="chip miss">{t} (missing)</i>)}</div></div>}
+                  {c.applicant_skills.length > 0 && <div><strong>Skills on profile</strong><div className="chips big">{c.applicant_skills.map((t) => <i key={t} className="chip">{t}</i>)}</div></div>}
+                  <div><strong>Cover letter</strong><div className="pre">{c.cover_letter || '—'}</div></div>
+                  <div><strong>Resume</strong>{!c.match_scored && <div className="muted small">{RESUME_NOTE[c.resume_state]}</div>}<div>{c.resume_url ? <a className="link" href={c.resume_url} target="_blank" rel="noopener noreferrer">{c.resume_url.includes('/api/files/') ? 'Open uploaded resume ↗' : c.resume_url}</a> : '—'}</div></div>
+                  <div className="cand-actions">
+                    <label className="muted">Move to</label>
+                    <select className="mini" value={c.status} onChange={(e) => patch(c, { status: e.target.value })}>{CSTAT.map((s) => <option key={s}>{s}</option>)}</select>
+                  </div>
+                </div>)}
+            </div>)
+        })}
     </>
   )
 }
