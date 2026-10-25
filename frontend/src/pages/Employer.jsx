@@ -218,7 +218,8 @@ const RESUME_NOTE = {
 }
 function MatchBadge({ c }) {
   if (!c.match_scored) return <span className="match m-none" title={RESUME_NOTE[c.resume_state]}>No readable resume</span>
-  return <span className={'match m-' + c.match_level} title="Share of the job's skills found in the applicant's resume">{c.match_level === 'top' ? '★ ' : ''}{c.match}% match</span>
+  const fromProfile = c.match_source === 'profile'
+  return <span className={'match m-' + c.match_level} title={fromProfile ? 'Resume could not be read (' + (RESUME_NOTE[c.resume_state] || '') + '), so this score uses the skills on the applicant profile' : "Share of the job's skills found in the applicant's resume"}>{c.match_level === 'top' ? '★ ' : ''}{c.match}% match{fromProfile ? ' *' : ''}</span>
 }
 const Chips = ({ ok = [], miss = [], max = 5 }) => (ok.length || miss.length) ? (
   <span className="chips">
@@ -309,6 +310,7 @@ export function Candidates() {
                   <strong>{nameOf(c)}</strong>
                   <span className="muted">{c.job_title}{c.applicant_title ? ' · ' + c.applicant_title : ''}{c.applicant_location ? ' · ' + c.applicant_location : ''} · {timeAgo(c.created_at)}</span>
                   {c.match_scored ? <Chips ok={c.matched_skills} miss={c.missing_skills} /> : <span className="muted small ms-note">{RESUME_NOTE[c.resume_state]}</span>}
+                  {c.match_scored && c.match_source === 'profile' && <span className="muted small ms-note">* Resume unreadable, scored from profile skills</span>}
                 </div>
                 <MatchBadge c={c} />
                 <span className={'status s-' + c.status}>{c.status}</span>

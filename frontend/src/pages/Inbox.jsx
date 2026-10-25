@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { api, timeAgo, shortDate } from '../api'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { api, timeAgo, shortDate, payText, JOB_TYPES, WORKPLACES } from '../api'
 import { useAuth } from '../auth.jsx'
 import Icon from '../components/Icon.jsx'
 
@@ -33,11 +33,44 @@ export function Notifications() {
   )
 }
 
+const initials = (s = '') => s.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?'
+
+/* Job + company details shown next to the chat */
+function Details({ convo, employer, onClose }) {
+  const j = convo.job
+  if (!j) return null
+  const pay = payText({ salary_min: j.salary_min, salary_max: j.salary_max, salary_period: j.salary_period })
+  const jobLink = employer && j.status !== 'published' ? `/employer/dashboard/jobs/${j.id}/edit` : `/jobs/${j.id}`
+  return (
+    <div className="ms-details">
+      <button className="ms-x" onClick={onClose} aria-label="Close details">✕</button>
+      <h3>{j.title}</h3>
+      <div className="ms-co">
+        {j.company_id ? <Link className="link" to={'/companies/' + j.company_id}>{j.company_name}</Link> : j.company_name}
+        <span className="ms-star">{j.company_rating || 0} ★</span>
+      </div>
+      {j.location && <div className="muted">{j.location}</div>}
+      <dl>
+        <div className="ms-row"><dt>Job type</dt><dd>{JOB_TYPES[j.job_type] || j.job_type}</dd></div>
+        {j.workplace_type && <div className="ms-row"><dt>Workplace</dt><dd>{WORKPLACES[j.workplace_type] || j.workplace_type}</dd></div>}
+        {pay && <div className="ms-row"><dt>Salary</dt><dd>{pay}</dd></div>}
+        {employer && convo.applicant && (
+          <div className="ms-row"><dt>Applicant</dt><dd>{convo.applicant.name}<br /><span className="muted">{convo.applicant.email}</span><br /><span className={'status s-' + convo.applicant.status}>{convo.applicant.status}</span></dd></div>)}
+      </dl>
+      <Link className="ms-fulljob" to={jobLink}>View full job description</Link>
+      {employer && <Link className="btn btn-outline sm" to={`/employer/dashboard/candidates?job=${j.id}`}>All candidates for this job</Link>}
+    </div>
+  )
+}
+
 export function Messages() {
-  const { refreshCounts } = useAuth()
+  const { user, refreshCounts } = useAuth()
+  const employer = user?.role === 'employer'
   const [sp, setSp] = useSearchParams(); const app = sp.get('app')
   const [threads, setThreads] = useState(null); const [convo, setConvo] = useState(null)
   const [text, setText] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false)
+  const wide = () => typeof window !== 'undefined' && window.innerWidth > 900
+  const [details, setDetails] = useState(wide)          // job / company sidebar is open by default on desktop
   const box = useRef(null)
 
   const loadThreads = useCallback(() => api('/messages/threads').then(setThreads).catch(() => setThreads([])), [])
@@ -47,6 +80,7 @@ export function Messages() {
   }, [app, refreshCounts])
   useEffect(() => { loadThreads() }, [loadThreads])
   useEffect(() => {
+    setDetails(wide())
     loadConvo()
     const t = setInterval(() => { loadConvo(); loadThreads() }, 15000)   // simple polling
     return () => clearInterval(t)
@@ -55,46 +89,65 @@ export function Messages() {
 
   const send = async (e) => {
     e.preventDefault()
-    if (!text.trim()) return
+    if (!text.trim() || !app) return
     setBusy(true); setErr('')
     try { await api('/messages/' + app, { method: 'POST', body: { body: text.trim() } }); setText(''); loadConvo(); loadThreads() }
     catch (x) { setErr(x.message) } finally { setBusy(false) }
   }
 
+  // a chat opened from the Candidates "Message" button has no messages yet, so add it to the list
+  const rows = [...(threads || [])]
+  if (app && convo && !rows.some((t) => String(t.application_id) === app)) {
+    rows.unshift({ application_id: convo.application_id, title: convo.title, job_title: convo.job_title, last: '', last_at: null, unread: 0, last_from_me: false })
+  }
+  const active = !!(app && convo)
+
   return (
-    <div className="msgs">
-      <div>
-        <div className="msgs-h">Messages <span className="online">● Online</span></div>
-        <div className="tlist">
-          {threads === null ? <div className="empty">Loading…</div> : threads.length === 0 && !app ? <div className="empty muted">No conversations yet. Message an employer from My jobs → Update status.</div> :
-            threads.map((t) => (
-              <button key={t.application_id} className={'titem' + (String(t.application_id) === app ? ' on' : '') + (t.unread ? ' unread' : '')} onClick={() => setSp({ app: t.application_id })}>
-                <span className="sqav"><Icon name="building" size={20} /></span>
-                <span style={{ minWidth: 0, flex: 1 }}>
-                  <span className="tt"><strong>{t.title}</strong><em>{shortDate(t.last_at)}</em></span>
-                  <p>{t.last_from_me ? 'You: ' : ''}{t.last}</p>
+    <div className="ms-wrap">
+      <div className={'ms' + (active ? ' has-active has-t' : '')}>
+        <div className="ms-list">
+          <div className="ms-lh">Messages</div>
+          {threads === null ? <div className="ms-empty muted">Loading…</div> : rows.length === 0
+            ? <div className="ms-empty muted">{employer ? 'No conversations yet. Open Candidates and press Message on an applicant.' : 'No conversations yet. Employers will message you here after you apply.'}</div>
+            : rows.map((t) => (
+              <button key={t.application_id} className={'ms-item' + (String(t.application_id) === app ? ' on' : '')} onClick={() => setSp({ app: t.application_id })}>
+                <span className="ms-av">{initials(t.title)}</span>
+                <span className="ms-it">
+                  <span className="ms-line"><b>{t.title}</b><small>{t.last_at ? shortDate(t.last_at) : ''}</small></span>
+                  <span className="ms-sub">{t.job_title}</span>
+                  <span className="ms-last">{t.last ? (t.last_from_me ? 'You: ' : '') + t.last : 'No messages yet'}</span>
                 </span>
+                {t.unread > 0 && <span className="badge ms-badge">{t.unread > 9 ? '9+' : t.unread}</span>}
               </button>))}
         </div>
-      </div>
-      <div className="convo">
-        {!app || !convo ? (
-          <div className="welcome-pane"><Icon name="chat" size={54} /><h3>Welcome to Messages</h3><p>{err || 'Select a conversation to view and respond.'}</p></div>
-        ) : (
-          <>
-            <div className="convo-h"><strong>{convo.title}</strong><small>{convo.job_title}</small></div>
-            <div className="bubbles" ref={box}>
-              {convo.messages.length === 0 && <div className="muted" style={{ margin: 'auto' }}>No messages yet. Say hello below.</div>}
-              {convo.messages.map((m) => <div key={m.id} className={'bub' + (m.mine ? ' me' : '')}>{m.body}<small>{timeAgo(m.created_at)}</small></div>)}
-            </div>
-            {err && <div className="alert" style={{ margin: '0 14px' }}>{err}</div>}
-            <form className="composer" onSubmit={send}>
-              <textarea rows={2} value={text} maxLength={3000} onChange={(e) => setText(e.target.value)} placeholder="Write a message…"
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) send(e) }} />
-              <button className="btn btn-primary" disabled={busy || !text.trim()}>Send</button>
-            </form>
-          </>
-        )}
+
+        <div className="ms-chat">
+          {!active ? (
+            <div className="ms-welcome"><Icon name="chat" size={54} /><h3>Welcome to Messages</h3><p>{err || 'Select a conversation to view and respond.'}</p></div>
+          ) : (
+            <>
+              <div className="ms-head">
+                <button className="ms-back" onClick={() => setSp({})} aria-label="Back to conversations">‹</button>
+                <span className="ms-av">{initials(convo.title)}</span>
+                <span className="ms-ht"><b>{convo.title}</b><small className="muted">{convo.job_title}</small></span>
+                <button className="btn btn-ghost sm ms-dbtn" onClick={() => setDetails(!details)}>{details ? 'Hide details' : 'Job details'}</button>
+              </div>
+              <div className="ms-body" ref={box}>
+                {convo.messages.length === 0 && <div className="muted" style={{ margin: 'auto' }}>No messages yet. Say hello below.</div>}
+                {convo.messages.map((m) => (
+                  <div key={m.id} className={'ms-msg ' + (m.mine ? 'me' : 'them')}>{m.body}<div className="ms-time">{timeAgo(m.created_at)}</div></div>))}
+              </div>
+              {err && <div className="alert" style={{ margin: '0 14px' }}>{err}</div>}
+              <form className="ms-compose" onSubmit={send}>
+                <textarea rows={2} value={text} maxLength={3000} onChange={(e) => setText(e.target.value)} placeholder="Write your message…"
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) send(e) }} />
+                <button className="btn btn-primary" disabled={busy || !text.trim()}>Send</button>
+              </form>
+            </>
+          )}
+        </div>
+
+        {active && <div className={'ms-dwrap' + (details ? ' show' : '')}><Details convo={convo} employer={employer} onClose={() => setDetails(false)} /></div>}
       </div>
     </div>
   )

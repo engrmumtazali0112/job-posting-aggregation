@@ -10,11 +10,22 @@ from .matching import match_score
 from .schemas import JobIn, EmployerJobOut
 from .security import require_role
 from .services import get_require_approval, apply_job_fields, resolve_location, delete_jobs, notify
+from .resume_parser import read_resume
 
 router = APIRouter(prefix="/api/employer", tags=["employer"])
 
 CANDIDATE_STATUSES = ("new", "reviewing", "shortlisted", "contacting", "interviewing", "rejected", "hired")
 JOB_STATUSES = ("pending", "published", "paused", "closed", "rejected")
+
+def profile_text(p) -> str:
+    """Text built from the applicant's profile (skills, summary, titles, experience). Used only when the resume cannot be read."""
+    if not p:
+        return ""
+    parts = [" ".join(p.skills or []), p.summary or "", " ".join(p.job_titles or [])]
+    for e in (p.experience or []):
+        if isinstance(e, dict):
+            parts += [str(e.get("title") or ""), str(e.get("description") or "")]
+    return "\n".join(x for x in parts if x).strip()
 
 def share(job: Job) -> None:
     try:
@@ -177,6 +188,10 @@ class CandidateOut(BaseModel):
     match_level: str = "none"          # top | good | low | none
     matched_skills: list[str] = []
     missing_skills: list[str] = []
+    match_score: int = 0               # same value as `match` (0-100)
+    match_source: str = "resume"       # resume | profile (profile = resume unreadable, scored from profile skills)
+    resume_state: str = "none"         # ok | none | link | image | scanned | missing | unreadable
+    answers: list[dict] = []           # answers to the job's screening questions
 
 class CandidatesOut(BaseModel):
     counts: dict[str, int]
@@ -195,9 +210,29 @@ def candidates(job_id: int | None = None, status: str = "", q: str = "", skipped
     rows = db.execute(stmt.order_by(Application.created_at.desc()).limit(1000)).all()
 
     scored = []
+    dirty = False
     for a, j, u, p in rows:
-        m = match_score(j.title, j.description, p)
-        scored.append((a, j, u, p, m))
+        # match_score() needs the resume TEXT (a string), not the SeekerProfile object
+        url = a.resume_url or (p.resume_url if p else None)       # fall back to the profile resume
+        text, state = a.resume_text or "", "ok"
+        if not text:                                               # not read yet (or nothing readable last time)
+            if p and p.resume_text and url == p.resume_url:
+                text = p.resume_text
+            else:
+                text, state = read_resume(url)                      # file on disk, or a downloaded PDF link
+            if text:
+                a.resume_text = text                                # remember it on the application
+                dirty = True
+        rs = "ok" if text else (state if state != "ok" else "none")   # why the resume cannot be matched: none | link | image | scanned | missing | unreadable
+        source = "resume"
+        if not text:                                               # resume unreadable: fall back to the profile so a score still shows
+            ptxt = profile_text(p)
+            if ptxt:
+                text, source = ptxt, "profile"
+            print(f"[candidates] app {a.id}: resume {rs} (url={url!r}), scoring from {source}")
+        m = match_score(j.title, j.description or "", text)
+        m["source"] = source
+        scored.append((a, j, u, p, m, rs))
 
     # tab counts ignore the status filter but respect job / skipped
     live = [r for r in scored if not r[0].skipped]
@@ -206,11 +241,11 @@ def candidates(job_id: int | None = None, status: str = "", q: str = "", skipped
         by_status[a.status] = by_status.get(a.status, 0) + 1
     counts = {"all": len(live), "skipped": sum(1 for r in scored if r[0].skipped),
               **{s: by_status.get(s, 0) for s in CANDIDATE_STATUSES},
-              "top": sum(1 for a, j, u, p, m in live if m["level"] == "top" and a.status in ("new", "reviewing"))}
+              "top": sum(1 for a, j, u, p, m, rs in live if m["level"] == "top" and a.status in ("new", "reviewing"))}
 
     like = q.lower().strip()
     out = []
-    for a, j, u, p, m in scored:
+    for a, j, u, p, m, rs in scored:
         if bool(a.skipped) != skipped:
             continue
         if status and a.status != status:
@@ -225,10 +260,13 @@ def candidates(job_id: int | None = None, status: str = "", q: str = "", skipped
             applicant_title=titles[0] if titles else None, applicant_location=p.location if p else None,
             applicant_skills=((p.skills if p else None) or [])[:12], cover_letter=a.cover_letter, resume_url=a.resume_url,
             status=a.status, skipped=bool(a.skipped), created_at=a.created_at, match_scored=m["scored"], match=m["score"],
-            match_level=m["level"], matched_skills=m["matched"], missing_skills=m["missing"])))
+            match_level=m["level"], matched_skills=m["matched"], missing_skills=m["missing"],
+            match_score=m["score"], match_source=m.get("source", "resume"), resume_state=rs, answers=a.answers or [])))
     if sort == "match":
         out.sort(key=lambda r: (r[1].match, r[0].created_at), reverse=True)     # best match first, newest as tie-break
     items = [o for _, o in out][offset:offset + min(limit, 500)]
+    if dirty:
+        db.commit()                 # save the resume text we just read (done last so rows are not reloaded)
     return {"counts": counts, "items": items}
 
 TEXTS = {"reviewing": "viewed your application.", "shortlisted": "shortlisted you for", "contacting": "wants to contact you about",
