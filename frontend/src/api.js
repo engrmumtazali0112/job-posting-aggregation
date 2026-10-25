@@ -1,5 +1,8 @@
-// Works whether VITE_API_URL is "https://host" or "https://host/api"
-const ROOT = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '').replace(/\/api$/, '')
+// Where the API lives. Leave VITE_API_URL empty to use the same origin ("/api"): the Vite dev proxy locally (vite.config.js)
+// and the rewrite in vercel.json (to the Render backend) in production. Set it only if the API is on another domain; then add
+// this site's address to CORS_ORIGINS on the server. Works whether it is "https://host" or "https://host/api".
+// (It used to fall back to http://localhost:8000, so a Vercel build without VITE_API_URL called the visitor's own computer.)
+const ROOT = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '').replace(/\/api$/, '')
 export const API = ROOT + '/api'
 
 export const getToken = () => sessionStorage.getItem('token')
@@ -16,12 +19,15 @@ async function request(path, { method = 'GET', body, form } = {}) {
   try { res = await fetch(API + path, { method, headers, body: payload }) }
   catch { throw new Error('Cannot reach the server. Please try again.') }
   if (!res.ok) {
-    let msg = 'Something went wrong'
+    const DEFAULT = 'Something went wrong'
+    let msg = DEFAULT, code
     try {
       const d = await res.json()
-      msg = typeof d.detail === 'string' ? d.detail : Array.isArray(d.detail) ? d.detail.map((x) => x.msg).join(', ') : msg
+      if (d.detail && typeof d.detail === 'object' && !Array.isArray(d.detail)) { msg = d.detail.message || msg; code = d.detail.code }   // {code, message}
+      else msg = typeof d.detail === 'string' ? d.detail : Array.isArray(d.detail) ? d.detail.map((x) => x.msg.replace(/^Value error, /, '')).join(', ') : msg
     } catch { /* keep default */ }
-    const e = new Error(msg); e.status = res.status; throw e
+    if (msg === DEFAULT && [502, 503, 504].includes(res.status)) msg = 'The server is starting up (it sleeps when idle). Please wait about a minute and try again.'
+    const e = new Error(msg); e.status = res.status; e.code = code; throw e
   }
   return res
 }

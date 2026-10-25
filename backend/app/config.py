@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     require_approval: bool = True
     jooble_api_key: str = ""
     cors_origins: str = "http://localhost:5173"
+    cors_origin_regex: str = ""               # optional, e.g. ^https://job-board-frontend-[a-z0-9-]+\.vercel\.app$ for Vercel preview URLs
+    require_email_verification: bool = True   # new accounts must click the emailed link before they can log in (set false to turn off)
     google_client_id: str = ""
     google_client_secret: str = ""
     telegram_bot_token: str = ""
@@ -18,6 +20,7 @@ class Settings(BaseSettings):
     stale_job_days: int = 30
     upload_dir: str = "uploads"               # resumes are stored here (swap for S3/R2 later, see storage.py)
     max_upload_mb: int = 5
+    github_token: str = ""                    # optional: raises GitHub's API limit (60/h unauthenticated) for Real Match checks
     public_base_url: str = ""                 # e.g. https://api.mysite.com ; empty = same origin / dev proxy
     model_config = {"env_file": ".env", "extra": "ignore"}
 

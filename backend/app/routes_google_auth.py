@@ -50,6 +50,9 @@ def google_login(data: GoogleIn, db: Session = Depends(get_db)):
         db.add(user)
         db.commit()
         db.refresh(user)
+    elif not user.is_verified:                 # Google has just proven that this person owns the address
+        user.is_verified = True
+        db.commit()
         
     if user.is_active is False:
         raise HTTPException(403, "This account has been deactivated")

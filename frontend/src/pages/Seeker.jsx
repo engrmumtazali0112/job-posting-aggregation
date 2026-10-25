@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
-import { api, getToken, JOB_TYPES, STATUS_LABEL, shortDate, timeAgo } from '../api'
+import { api, API, getToken, JOB_TYPES, STATUS_LABEL, shortDate, timeAgo } from '../api'
 import { useAuth } from '../auth.jsx'
 import Icon from '../components/Icon.jsx'
 import JobCard from '../components/JobCard.jsx'
@@ -38,6 +38,41 @@ export function Layout() {
   )
 }
 
+/* ---------------- ATS score + resume download ---------------- */
+async function downloadResume() {
+  let res
+  try { res = await fetch(API + '/seeker/resume/generate', { headers: { Authorization: 'Bearer ' + getToken() } }) }
+  catch { throw new Error('Cannot reach the server. Please try again.') }
+  if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(typeof d.detail === 'string' ? d.detail : 'Could not create your resume. Please try again.') }
+  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1] || 'Resume.docx'
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 2000)
+}
+
+function DownloadResume({ cls = 'btn btn-light sm', label = 'Download Resume' }) {
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('')
+  const go = async () => { setBusy(true); setErr(''); try { await downloadResume() } catch (x) { setErr(x.message) } finally { setBusy(false) } }
+  return <><button type="button" className={cls} disabled={busy} onClick={go} title="ATS-friendly Word document built from your profile">{busy ? 'Preparing…' : label}</button>{err && <div className="alert" style={{ marginTop: 8 }}>{err}</div>}</>
+}
+
+function AtsCard({ refreshKey = 0 }) {
+  const [a, setA] = useState(null); const [err, setErr] = useState('')
+  useEffect(() => { api('/seeker/resume/ats-score').then(setA).catch((e) => setErr(e.message)) }, [refreshKey])
+  if (err) return <div className="alert">{err}</div>
+  if (!a) return <div className="card skel" />
+  return (
+    <div className="card pad-card sk-block" id="sec-ats">
+      <div className="sk-split"><div><h3>ATS resume score</h3><p className="muted">How easily recruiters' tracking software can read and rank your profile. {a.grade}.</p></div><div className="sk-pct">{a.score}%</div></div>
+      <div className="sk-barfill" role="progressbar" aria-valuenow={a.score} aria-valuemin="0" aria-valuemax="100"><i style={{ width: a.score + '%' }} /></div>
+      {a.tips.length > 0 && <>
+        <h4>How to improve</h4>
+        <ul className="sk-steps">{a.tips.map((t) => <li key={t.key}><Link to={'/my/profile?focus=' + t.focus}>{t.text}</Link></li>)}</ul></>}
+      <div className="acts"><DownloadResume cls="btn btn-primary sm" label="Download ATS resume (.docx)" /></div>
+    </div>
+  )
+}
+
 const Pill = ({ s }) => <span className={'sk-pill p-' + (GROUP[s] || 'applied')}>{({ ...STATUS_LABEL, shortlisted: 'Shortlisted' })[s] || s}</span>
 
 /* ---------------- dashboard ---------------- */
@@ -62,6 +97,8 @@ export function Dashboard() {
           <ul className="sk-steps">{(c.steps ? c.steps.filter((x) => !x.done) : c.next.map((label) => ({ label, key: '' }))).slice(0, 3).map((x) => <li key={x.label}><Link to={'/my/profile' + (x.key ? '?focus=' + x.key : '')}>{x.label}</Link></li>)}</ul></>}
         {c.done.length > 0 && <div className="sk-tags">{c.done.map((t) => <span key={t} className="sk-tag ok">✓ {t.replace(/^(Add|Write) (your |a |the )?/, '')}</span>)}</div>}
       </div>
+
+      <AtsCard />
 
       <div className="sk-stats">
         {[['Applications', s.total, 'Total applications', ''], ['Interviews', s.interview, 'Interview stage', 'interview'], ['Under review', s.review, 'Being reviewed', 'review'], ['Accepted', s.accepted, 'Offers received', 'accepted']].map(([l, n, sub, f]) => (
@@ -241,7 +278,10 @@ export function Saved() {
 
 /* ---------------- profile ---------------- */
 const EMPTY = { full_name: '', phone: '', location: '', visible: true, resume_url: '', resume_name: '', job_titles: [], job_types: [],
-  min_pay: null, min_pay_period: 'month', relocation: '', available_now: false, summary: '', skills: [], experience: [], education: [], languages: [], certifications: [] }
+  min_pay: null, min_pay_period: 'month', relocation: '', available_now: false, summary: '', skills: [], experience: [], education: [], languages: [], certifications: [],
+  linkedin_url: '', github_url: '', portfolio_url: '', projects: [] }
+// the profile form edits a project's tech stack as comma separated text; the API stores it as a list
+const fromApi = (r) => ({ ...EMPTY, ...r, projects: (r.projects || []).map((x) => ({ ...x, tech_stack: (x.tech_stack || []).join(', ') })) })
 
 function useDraft(initial, save) {
   const [editing, setEditing] = useState(false); const [draft, setDraft] = useState(initial)
@@ -378,6 +418,21 @@ function ResumeSection({ p, save }) {
   )
 }
 
+function LinksSection({ p, save }) {
+  const init = { linkedin_url: p.linkedin_url || '', github_url: p.github_url || '', portfolio_url: p.portfolio_url || '' }
+  const d = useDraft(init, (v) => save(v))
+  const set = (k) => (e) => d.setDraft({ ...d.draft, [k]: e.target.value })
+  const ROWS = [['github_url', 'GitHub'], ['linkedin_url', 'LinkedIn'], ['portfolio_url', 'Portfolio']]
+  return <Frame id="sec-links" title="Links & proof of work" hint="Employers check your skills against your public GitHub and portfolio, not only what you type" d={d}
+    hasData={ROWS.some(([k]) => p[k])} addLabel="Add GitHub, LinkedIn or portfolio" onAdd={() => d.open(init)}
+    view={<div className="sk-items">{ROWS.filter(([k]) => p[k]).map(([k, l]) => <div key={k} className="sk-item"><span className="muted">{l}: </span><a className="link" href={p[k]} target="_blank" rel="noopener noreferrer">{p[k]}</a></div>)}</div>}
+    form={<>
+      <label>GitHub profile<input type="text" placeholder="https://github.com/username" maxLength={300} value={d.draft.github_url} onChange={set('github_url')} /></label>
+      <label>LinkedIn profile<input type="text" placeholder="https://www.linkedin.com/in/your-name" maxLength={300} value={d.draft.linkedin_url} onChange={set('linkedin_url')} /></label>
+      <label>Portfolio / website<input type="text" placeholder="https://your-site.com" maxLength={300} value={d.draft.portfolio_url} onChange={set('portfolio_url')} /></label>
+    </>} />
+}
+
 function BasicsForm({ p, save, onDone }) {
   const [f, setF] = useState({ full_name: p.full_name || '', phone: p.phone || '', location: p.location || '', titles: p.job_titles.join(', '),
     job_types: p.job_types, min_pay: p.min_pay ?? '', min_pay_period: p.min_pay_period || 'month', relocation: p.relocation || '', available_now: p.available_now, visible: p.visible })
@@ -420,9 +475,9 @@ const month = (v) => { if (!v) return ''; const [y, m] = v.split('-'); return m 
 
 export function Profile() {
   const { user, refresh } = useAuth()
-  const [p, setP] = useState(null); const [err, setErr] = useState(''); const [editing, setEditing] = useState(false)
+  const [p, setP] = useState(null); const [err, setErr] = useState(''); const [editing, setEditing] = useState(false); const [ver, setVer] = useState(0)
   const [sp] = useSearchParams(); const focus = sp.get('focus')
-  useEffect(() => { api('/seeker/profile').then((r) => setP({ ...EMPTY, ...r })).catch((e) => setErr(e.message)) }, [])
+  useEffect(() => { api('/seeker/profile').then((r) => setP(fromApi(r))).catch((e) => setErr(e.message)) }, [])
   // "Next steps" on the dashboard link here with ?focus=<step>: open the right form, scroll to it and highlight it
   useEffect(() => {
     if (!p || !focus) return
@@ -444,7 +499,7 @@ export function Profile() {
   const save = async (patch) => {            // the API replaces the whole profile, so always send it in full
     const { id, email, ...rest } = { ...p, ...patch }
     const r = await api('/seeker/profile', { method: 'PUT', body: { ...rest, summary: rest.summary || null, resume_url: rest.resume_url || null, resume_name: rest.resume_name || null } })
-    setP({ ...EMPTY, ...r }); refresh()
+    setP(fromApi(r)); setVer((v) => v + 1); refresh()
   }
   const name = p.full_name || user?.email
   return (
@@ -457,13 +512,22 @@ export function Profile() {
           {p.phone && <div>{p.phone}</div>}
           {p.location && <div>{p.location}</div>}
           {p.job_titles.length > 0 && <div className="sk-tags">{p.job_titles.map((t) => <span key={t} className="sk-tag light">{t}</span>)}</div>}
-          <button className="btn btn-light sm" onClick={() => setEditing(!editing)}>{editing ? 'Close' : 'Edit profile'}</button>
+          <div className="acts">
+            <button className="btn btn-light sm" onClick={() => setEditing(!editing)}>{editing ? 'Close' : 'Edit profile'}</button>
+            <DownloadResume />
+          </div>
         </div>
       </div>
       {editing && <BasicsForm p={p} save={save} onDone={() => setEditing(false)} />}
+      <AtsCard refreshKey={ver} />
       <div className="sk-two sk-cards">
         <TextSection p={p} save={save} />
         <SkillsSection p={p} save={save} />
+        <LinksSection p={p} save={save} />
+        <ListSection title="Projects" hint="Real work you built. Employers compare it with your GitHub" addLabel="Add a project" items={p.projects} field="projects" required="name"
+          blank={{ name: '', tech_stack: '', description: '', url: '' }}
+          fields={[['name', 'Project name'], ['tech_stack', 'Tech stack (comma separated, e.g. Python, React, Docker)'], ['description', 'Description', 'area'], ['url', 'Link (optional)', 'url']]}
+          render={(x) => <><strong>{x.name}</strong>{x.tech_stack && <div className="muted small">{x.tech_stack}</div>}{x.description && <p className="sk-text">{x.description}</p>}{x.url && <a className="link" href={x.url} target="_blank" rel="noopener noreferrer">{x.url}</a>}</>} save={save} />
         <ListSection title="Career history" hint="Your previous job roles and experience" addLabel="Add experience" items={p.experience} field="experience" required="title"
           blank={{ title: '', company: '', start: '', end: '', current: false, description: '' }}
           fields={[['title', 'Job title'], ['company', 'Company'], ['start', 'Start', 'month'], ['end', 'End', 'month'], ['current', 'I currently work here', 'check'], ['description', 'Description', 'area']]}

@@ -11,6 +11,7 @@ from .schemas import JobIn, EmployerJobOut
 from .security import require_role
 from .services import get_require_approval, apply_job_fields, resolve_location, delete_jobs, notify
 from .resume_parser import read_resume
+from .real_match import real_match as compute_real_match, prefetch as prefetch_proofs
 
 router = APIRouter(prefix="/api/employer", tags=["employer"])
 
@@ -25,6 +26,9 @@ def profile_text(p) -> str:
     for e in (p.experience or []):
         if isinstance(e, dict):
             parts += [str(e.get("title") or ""), str(e.get("description") or "")]
+    for pr in (p.projects or []):
+        if isinstance(pr, dict):
+            parts += [str(pr.get("name") or ""), str(pr.get("description") or ""), " ".join(pr.get("tech_stack") or [])]
     return "\n".join(x for x in parts if x).strip()
 
 def share(job: Job) -> None:
@@ -190,6 +194,15 @@ class CandidateOut(BaseModel):
     missing_skills: list[str] = []
     match_score: int = 0               # same value as `match` (0-100)
     match_source: str = "resume"       # resume | profile (profile = resume unreadable, scored from profile skills)
+    # Real Match (see real_match.py): 30% resume + 40% GitHub + 30% LinkedIn/portfolio
+    real_match_score: int = 0
+    real_match_level: str = "low"      # top | good | low
+    github_verified: list[str] = []    # job skills found in the candidate's own public GitHub repos
+    portfolio_verified: list[str] = [] # job skills found on the candidate's portfolio site
+    real_match: dict = {}              # breakdown + link status for the details panel
+    github_url: str | None = None
+    linkedin_url: str | None = None
+    portfolio_url: str | None = None
     resume_state: str = "none"         # ok | none | link | image | scanned | missing | unreadable
     answers: list[dict] = []           # answers to the job's screening questions
 
@@ -199,7 +212,7 @@ class CandidatesOut(BaseModel):
 
 @router.get("/candidates", response_model=CandidatesOut)
 def candidates(job_id: int | None = None, status: str = "", q: str = "", skipped: bool = False,
-               min_match: int = 0, sort: Literal["match", "newest"] = "match", limit: int = 200, offset: int = 0,
+               min_match: int = 0, sort: Literal["real", "match", "newest"] = "real", limit: int = 200, offset: int = 0,
                user: User = Depends(require_role("employer")), db: Session = Depends(get_db)):
     company = get_company(db, user)
     stmt = (select(Application, Job, User, SeekerProfile).join(Job, Job.id == Application.job_id)
@@ -209,6 +222,8 @@ def candidates(job_id: int | None = None, status: str = "", q: str = "", skipped
         stmt = stmt.where(Job.id == job_id)
     rows = db.execute(stmt.order_by(Application.created_at.desc()).limit(1000)).all()
 
+    # warm the GitHub / portfolio caches for all applicants in parallel (cached for hours, so repeat loads are instant)
+    prefetch_proofs([(p.github_url if p else None, p.portfolio_url if p else None) for _, _, _, p in rows])
     scored = []
     dirty = False
     for a, j, u, p in rows:
@@ -232,6 +247,9 @@ def candidates(job_id: int | None = None, status: str = "", q: str = "", skipped
             print(f"[candidates] app {a.id}: resume {rs} (url={url!r}), scoring from {source}")
         m = match_score(j.title, j.description or "", text)
         m["source"] = source
+        written = "\n".join(x for x in (text, profile_text(p)) if x)       # everything the candidate WROTE (resume + profile + projects)
+        m["real"] = compute_real_match(j.title, j.description or "", written, p.github_url if p else None,
+                                       p.linkedin_url if p else None, p.portfolio_url if p else None)
         scored.append((a, j, u, p, m, rs))
 
     # tab counts ignore the status filter but respect job / skipped
@@ -250,7 +268,7 @@ def candidates(job_id: int | None = None, status: str = "", q: str = "", skipped
             continue
         if status and a.status != status:
             continue
-        if min_match and m["score"] < min_match:
+        if min_match and m["real"]["score"] < min_match:
             continue
         if like and like not in " ".join([u.email, u.full_name or "", j.title]).lower():
             continue
@@ -261,8 +279,14 @@ def candidates(job_id: int | None = None, status: str = "", q: str = "", skipped
             applicant_skills=((p.skills if p else None) or [])[:12], cover_letter=a.cover_letter, resume_url=a.resume_url,
             status=a.status, skipped=bool(a.skipped), created_at=a.created_at, match_scored=m["scored"], match=m["score"],
             match_level=m["level"], matched_skills=m["matched"], missing_skills=m["missing"],
-            match_score=m["score"], match_source=m.get("source", "resume"), resume_state=rs, answers=a.answers or [])))
-    if sort == "match":
+            match_score=m["score"], match_source=m.get("source", "resume"), resume_state=rs, answers=a.answers or [],
+            real_match_score=m["real"]["score"], real_match_level=m["real"]["level"],
+            github_verified=m["real"]["github_verified"], portfolio_verified=m["real"]["portfolio_verified"], real_match=m["real"],
+            github_url=p.github_url if p else None, linkedin_url=p.linkedin_url if p else None,
+            portfolio_url=p.portfolio_url if p else None)))
+    if sort == "real":
+        out.sort(key=lambda r: (r[1].real_match_score, r[1].match, r[0].created_at), reverse=True)   # most proof first
+    elif sort == "match":
         out.sort(key=lambda r: (r[1].match, r[0].created_at), reverse=True)     # best match first, newest as tie-break
     items = [o for _, o in out][offset:offset + min(limit, 500)]
     if dirty:
