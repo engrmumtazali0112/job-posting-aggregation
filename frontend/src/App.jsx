@@ -10,6 +10,8 @@ import JobDetail from './pages/JobDetail.jsx'
 import Company from './pages/Company.jsx'
 import CompanySearch from './pages/CompanySearch.jsx'
 import { Login, Register, VerifyEmail } from './pages/Auth.jsx'
+import ForgotPassword from './pages/ForgotPassword.jsx'
+import ResetPassword from './pages/ResetPassword.jsx'
 import { Notifications, Messages } from './pages/Inbox.jsx'
 import Apply from './pages/Apply.jsx'
 import * as E from './pages/Employer.jsx'
@@ -171,6 +173,8 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/verify-email/:token" element={<VerifyEmail />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password/:token" element={<ResetPassword />} />
 
           <Route path="/employer" element={<E.LandingPage />} />
           <Route path="/employer/dashboard" element={<Protected role="employer"><E.Layout /></Protected>}>

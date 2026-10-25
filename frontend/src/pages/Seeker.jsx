@@ -433,6 +433,41 @@ function LinksSection({ p, save }) {
     </>} />
 }
 
+/* ---------------- job alerts (emailed by the hourly job in scheduler.py) ---------------- */
+function AlertsSection() {
+  const [loaded, setLoaded] = useState(false); const [kw, setKw] = useState(''); const [on, setOn] = useState(false)
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [ok, setOk] = useState('')
+  useEffect(() => {
+    api('/seeker/alerts').then((r) => { setKw((r.keywords || []).join(', ')); setOn(!!r.is_active); setLoaded(true) }).catch((e) => setErr(e.message))
+  }, [])
+  const submit = async (e) => {
+    e.preventDefault(); setBusy(true); setErr(''); setOk('')
+    try {
+      const r = await api('/seeker/alerts', { method: 'PUT', body: { keywords: kw.split(',').map((s) => s.trim()).filter(Boolean), is_active: on } })
+      setKw((r.keywords || []).join(', ')); setOn(!!r.is_active)
+      setOk(r.is_active ? 'Job alerts are on. We will email you when new jobs match.' : 'Saved. Job alerts are off.')
+    } catch (x) { setErr(x.message) } finally { setBusy(false) }
+  }
+  if (!loaded) return err ? <div className="alert">{err}</div> : <div className="card skel" />
+  return (
+    <div id="sec-alerts" className="card pad-card sk-sec">
+      <div className="sk-split"><div><h3>Job Alerts</h3><p className="muted">Get an email when new jobs match your keywords. We check every hour.</p></div></div>
+      <form onSubmit={submit} className="form">
+        <div className="avail">
+          <strong id="alerts-lbl">Subscribe to Job Alerts</strong>
+          <button type="button" role="switch" aria-checked={on} aria-labelledby="alerts-lbl" className={'tog' + (on ? ' on' : '')} onClick={() => { setOn(!on); setOk('') }} />
+        </div>
+        <label>Keywords (comma separated, e.g., React, Python)
+          <input value={kw} maxLength={400} placeholder="React, Python" onChange={(e) => { setKw(e.target.value); setOk('') }} />
+        </label>
+        {err && <div className="alert">{err}</div>}
+        {ok && <div className="alert ok" role="status">{ok}</div>}
+        <div className="acts"><button className="btn btn-primary sm" disabled={busy}>{busy ? 'Saving…' : 'Save alerts'}</button></div>
+      </form>
+    </div>
+  )
+}
+
 function BasicsForm({ p, save, onDone }) {
   const [f, setF] = useState({ full_name: p.full_name || '', phone: p.phone || '', location: p.location || '', titles: p.job_titles.join(', '),
     job_types: p.job_types, min_pay: p.min_pay ?? '', min_pay_period: p.min_pay_period || 'month', relocation: p.relocation || '', available_now: p.available_now, visible: p.visible })
@@ -520,7 +555,8 @@ export function Profile() {
       </div>
       {editing && <BasicsForm p={p} save={save} onDone={() => setEditing(false)} />}
       <AtsCard refreshKey={ver} />
-      <div className="sk-two sk-cards">
+      <AlertsSection />
+      <div className="sk-cards">
         <TextSection p={p} save={save} />
         <SkillsSection p={p} save={save} />
         <LinksSection p={p} save={save} />

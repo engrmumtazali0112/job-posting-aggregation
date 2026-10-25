@@ -61,7 +61,10 @@
 .sk-hero-in .btn { margin-top: 10px; }
 .sk-avatar { width: 96px; height: 96px; border-radius: 50%; background: #fff; color: #5584a8; font-size: 40px; font-weight: 800; display: grid; place-items: center; flex: none; }
 .sk-two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.sk-cards { margin: 16px 0; align-items: start; }
+/* masonry-style flow: cards stack in two balanced columns, so a tall card (Projects) never leaves a gap beside a short one (Links) */
+.sk-cards { margin: 16px 0 0; column-count: 2; column-gap: 16px; }
+.sk-cards > * { break-inside: avoid; margin-bottom: 16px; }
+@media (max-width: 900px) { .sk-cards { column-count: 1; } }
 .sk-sec { display: grid; gap: 12px; }
 .sk-add { border: 1.5px solid #5584a8; background: #fff; color: #1c2733; border-radius: 999px; padding: 12px; font: inherit; font-weight: 500; cursor: pointer; }
 .sk-add:hover { background: #f3f7fb; }

@@ -1,11 +1,12 @@
 import re
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from .database import get_db
-from .models import User, Job, Application, SavedJob, SeekerProfile, Company
+from .models import User, Job, Application, SavedJob, SeekerProfile, Company, JobAlert
 from .security import require_role
-from .schemas import ApplicationIn, ProfileIn, JobPublic
+from .schemas import ApplicationIn, ProfileIn, JobPublic, JobAlertIn, JobAlertOut
 from .services import notify
 from . import storage, ats, resume_builder
 
@@ -115,6 +116,28 @@ def resume_ats_score(user: User = Depends(seeker), db: Session = Depends(get_db)
     p = profile_row(db, user)
     db.commit()
     return ats.ats_score(profile_out(user, p))
+
+
+# --- Job alerts (the scheduler emails matching new jobs, see scheduler.py) ---
+@router.get("/alerts", response_model=JobAlertOut)
+def get_alerts(user: User = Depends(seeker), db: Session = Depends(get_db)):
+    a = db.scalar(select(JobAlert).where(JobAlert.user_id == user.id))
+    return JobAlertOut(keywords=list(a.keywords or []) if a else [], is_active=bool(a and a.is_active))
+
+
+@router.put("/alerts", response_model=JobAlertOut)
+def save_alerts(data: JobAlertIn, user: User = Depends(seeker), db: Session = Depends(get_db)):
+    started = datetime.now(timezone.utc).replace(tzinfo=None)         # DateTime columns hold naive UTC
+    a = db.scalar(select(JobAlert).where(JobAlert.user_id == user.id))
+    if not a:
+        a = JobAlert(user_id=user.id, last_checked_at=started)
+        db.add(a)
+    elif data.is_active and not a.is_active:
+        a.last_checked_at = started                                    # turned back on: only jobs from now on, never a flood of old ones
+    a.keywords = data.keywords
+    a.is_active = data.is_active
+    db.commit()
+    return JobAlertOut(keywords=list(a.keywords or []), is_active=bool(a.is_active))
 
 
 # --- Dashboard ---
