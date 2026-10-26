@@ -1,7 +1,7 @@
 from sqlalchemy import delete, select, func
 from sqlalchemy.orm import Session
 from .config import settings
-from .models import AppSetting, Job, Application, SavedJob, Company, Notification, Message
+from .models import AppSetting, Job, Application, SavedJob, Company, Notification, Message, User
 from .schemas import JobIn
 
 def get_require_approval(db: Session) -> bool:
@@ -58,6 +58,12 @@ def delete_jobs(db: Session, ids: list[int]) -> int:
 def notify(db: Session, user_id: int, text: str, link: str | None = None) -> None:
     """Adds a notification. Caller commits."""
     db.add(Notification(user_id=user_id, text=text[:300], link=link))
+
+def notify_admins(db: Session, text: str, link: str | None = None) -> None:
+    """Adds a notification for every active admin. Caller commits (so a failed save never leaves a stray notification)."""
+    admin_ids = db.scalars(select(User.id).where(User.role == "admin", User.is_active.is_not(False))).all()
+    for uid in admin_ids:
+        db.add(Notification(user_id=uid, text=text[:300], link=link))
 
 def unclaimed_company(db: Session, name: str, cache: dict | None = None) -> Company:
     """Find or create the unclaimed company page for an aggregated job's company name."""

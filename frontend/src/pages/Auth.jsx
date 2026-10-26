@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth.jsx'
 
@@ -12,7 +12,7 @@ const Eye = ({ off }) => (
   </svg>
 )
 
-function Shell({ title, sub, children, foot, art }) {
+export function Shell({ title, sub, children, foot, art }) {
   return (
     <div className="ax-page">
       <div className="ax-card">
@@ -43,7 +43,7 @@ function TextField({ label, error, ...props }) {
   )
 }
 
-function PasswordField({ label, value, onChange, onBlur, autoComplete, error }) {
+export function PasswordField({ label, value, onChange, onBlur, autoComplete, error }) {
   const [show, setShow] = useState(false)
   return (
     <label className="ax-field">{label}
@@ -106,6 +106,7 @@ export function Login() {
   const { login } = useAuth(); const nav = useNavigate()
   const [email, setEmail] = useState(''); const [pw, setPw] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false)
   const [unverified, setUnverified] = useState(false)
+  const justReset = useLocation().state?.reset                // set by the reset-password page after a successful change
   const submit = async (e) => {
     e.preventDefault(); setErr(''); setUnverified(false); setBusy(true)
     try { const me = await login(email.trim(), pw); if (me) nav(home(me)) }
@@ -114,11 +115,13 @@ export function Login() {
   return (
     <Shell title="Welcome back" sub="Log in to your account" foot={<>New here? <Link to="/register">Create an account</Link></>}
       art={{ h: 'Pick up where you left off', p: 'Your saved jobs, applications and messages are waiting.', points: ['Track every application', 'Message employers directly', 'Get alerts for new jobs'] }}>
+      {justReset && <div className="alert ok" role="status" style={{ marginBottom: 14 }}>Your password was changed. Log in with your new password.</div>}
       <form onSubmit={submit} className="ax-form">
         <label className="ax-field">Email
           <span className="ax-input"><input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Enter your email" /></span>
         </label>
         <PasswordField label="Password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" />
+        <div className="ax-forgot"><Link to="/forgot-password">Forgot password?</Link></div>
         {err && <div className="alert" role="alert">{err}</div>}
         {unverified && <ResendVerification email={email} />}
         <button className="btn btn-primary full" disabled={busy}>{busy ? 'Logging in…' : 'Log in'}</button>

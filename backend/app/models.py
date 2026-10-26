@@ -168,6 +168,16 @@ class Message(Base):
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
+# --- job alerts: one row per seeker (the "Subscribe to Job Alerts" toggle in the profile) ---
+class JobAlert(Base):
+    __tablename__ = "job_alerts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    keywords: Mapped[list | None] = mapped_column(JSON)            # ["React", "Python"]; a job matches when ANY keyword appears in it
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_checked_at: Mapped[datetime] = mapped_column(DateTime, default=now)   # the scheduler only emails jobs created after this
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
 # --- home page: real testimonials, added by an admin ---
 class SuccessStory(Base):
     __tablename__ = "success_stories"

@@ -9,7 +9,7 @@ from .models import Job, Company, User, Application, SeekerProfile, make_hash
 from .matching import match_score
 from .schemas import JobIn, EmployerJobOut
 from .security import require_role
-from .services import get_require_approval, apply_job_fields, resolve_location, delete_jobs, notify
+from .services import get_require_approval, apply_job_fields, resolve_location, delete_jobs, notify, notify_admins
 from .resume_parser import read_resume
 from .real_match import real_match as compute_real_match, prefetch as prefetch_proofs
 
@@ -90,6 +90,8 @@ def create_job(data: JobIn, user: User = Depends(require_role("employer")), db: 
               dedupe_hash=h, status="pending" if get_require_approval(db) else "published")
     apply_job_fields(job, data)
     db.add(job)
+    if job.status == "pending":
+        notify_admins(db, f"New job pending approval: {job.title} ({company.name}).", "/admin/jobs?status=pending")
     db.commit()
     db.refresh(job)
     if job.status == "published":
@@ -128,11 +130,14 @@ def update_job(job_id: int, data: JobIn, user: User = Depends(require_role("empl
         raise HTTPException(409, "Another job with the same title and location already exists")
     apply_job_fields(job, data)
     job.dedupe_hash = h
+    was_pending = job.status == "pending"
     if get_require_approval(db):
         if job.status in ("published", "paused", "rejected"):
             job.status = "pending"          # edits need a new approval
     elif job.status == "rejected":
         job.status = "pending"              # admin rejected it, so it must be re-checked
+    if job.status == "pending" and not was_pending:
+        notify_admins(db, f"Job pending approval again: {job.title} ({company.name}).", "/admin/jobs?status=pending")
     db.commit()
     db.refresh(job)
     return to_out(job, app_counts(db, [job.id]))
@@ -161,6 +166,8 @@ def change_status(job_id: int, data: StatusIn, user: User = Depends(require_role
         if job.status != "closed":
             raise HTTPException(400, "Only closed jobs can be reopened")
         job.status = "pending" if get_require_approval(db) else "published"
+        if job.status == "pending":
+            notify_admins(db, f"Job pending approval (reopened): {job.title}.", "/admin/jobs?status=pending")
     db.commit()
     db.refresh(job)
     return to_out(job, app_counts(db, [job.id]))

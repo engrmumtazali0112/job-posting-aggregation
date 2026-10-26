@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, or_, func
 from sqlalchemy.orm import Session
 from .config import settings
+from .emailer import smtp_configured, smtp_summary
 from .database import Base, engine, get_db
 from .models import Job
 from .schemas import JobPublic
@@ -24,6 +25,9 @@ except Exception as exc:                # never stop the API from starting
 
 @asynccontextmanager
 async def lifespan(app):
+    _m = smtp_summary()
+    print("[startup] email:", f"SMTP on, sending as {_m['user']} via {_m['host']}:{_m['port']}" if smtp_configured()
+          else "SMTP NOT configured, emails are only printed to this log", "| site_url:", settings.site_url)
     sched = scheduler.start()
     yield
     sched.shutdown(wait=False)
