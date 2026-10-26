@@ -1,7 +1,8 @@
 import hashlib
 from datetime import datetime, timezone
 from sqlalchemy import String, Text, DateTime, ForeignKey, Boolean, Integer, UniqueConstraint, JSON
-from sqlalchemy.orm import Mapped, mapped_column
+from typing import Optional
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .database import Base
 
 def now():
@@ -37,6 +38,7 @@ class Company(Base):
     description: Mapped[str | None] = mapped_column(Text)
     logo_url: Mapped[str | None] = mapped_column(String(500))
     domain_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    whatsapp_number: Mapped[str | None] = mapped_column(String(20))   # digits only, with country code (e.g. 923001234567); used by the "Apply via WhatsApp" button
 
 class JobSource(Base):
     __tablename__ = "job_sources"
@@ -71,6 +73,12 @@ class Job(Base):
     dedupe_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=now, onupdate=now)
+    company: Mapped[Optional["Company"]] = relationship(lazy="joined")   # joined, so listing 50 jobs does not run 50 extra queries
+
+    @property
+    def company_whatsapp(self) -> str | None:
+        """Read by the JobPublic/JobFull schemas; the frontend shows the green WhatsApp button when this is set."""
+        return self.company.whatsapp_number if self.company else None
 
 class Application(Base):
     __tablename__ = "applications"
@@ -168,12 +176,13 @@ class Message(Base):
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
-# --- job alerts: one row per seeker (the "Subscribe to Job Alerts" toggle in the profile) ---
+# --- job alerts: a seeker can have several (up to 7), like LinkedIn: each one is a set of keywords + an optional location ---
 class JobAlert(Base):
     __tablename__ = "job_alerts"
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)      # NOT unique any more (see migrate.relax_job_alert_user_unique)
     keywords: Mapped[list | None] = mapped_column(JSON)            # ["React", "Python"]; a job matches when ANY keyword appears in it
+    location: Mapped[str | None] = mapped_column(String(150))      # optional; when set, the job's location must contain it ("Remote" also matches remote jobs)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_checked_at: Mapped[datetime] = mapped_column(DateTime, default=now)   # the scheduler only emails jobs created after this
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)

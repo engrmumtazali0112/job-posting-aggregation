@@ -433,37 +433,82 @@ function LinksSection({ p, save }) {
     </>} />
 }
 
-/* ---------------- job alerts (emailed by the hourly job in scheduler.py) ---------------- */
+/* ---------------- job alerts (up to 7, LinkedIn style; emailed by the hourly job in scheduler.py) ---------------- */
+const MAX_ALERTS = 7
+const parseKw = (s) => s.split(',').map((x) => x.trim()).filter(Boolean)
+
 function AlertsSection() {
-  const [loaded, setLoaded] = useState(false); const [kw, setKw] = useState(''); const [on, setOn] = useState(false)
+  const [alerts, setAlerts] = useState(null); const [adding, setAdding] = useState(false)
+  const [kw, setKw] = useState(''); const [loc, setLoc] = useState('')
   const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [ok, setOk] = useState('')
-  useEffect(() => {
-    api('/seeker/alerts').then((r) => { setKw((r.keywords || []).join(', ')); setOn(!!r.is_active); setLoaded(true) }).catch((e) => setErr(e.message))
-  }, [])
-  const submit = async (e) => {
-    e.preventDefault(); setBusy(true); setErr(''); setOk('')
+  useEffect(() => { api('/seeker/alerts').then(setAlerts).catch((e) => setErr(e.message)) }, [])
+  if (!alerts) return err ? <div className="alert">{err}</div> : <div className="card skel" />
+  const full = alerts.length >= MAX_ALERTS
+  const closeForm = () => { setAdding(false); setKw(''); setLoc(''); setErr('') }
+
+  const add = async (e) => {
+    e.preventDefault(); setErr(''); setOk('')
+    const keywords = parseKw(kw)
+    if (!keywords.length) { setErr('Enter at least one keyword, e.g. React, Python.'); return }
+    setBusy(true)
     try {
-      const r = await api('/seeker/alerts', { method: 'PUT', body: { keywords: kw.split(',').map((s) => s.trim()).filter(Boolean), is_active: on } })
-      setKw((r.keywords || []).join(', ')); setOn(!!r.is_active)
-      setOk(r.is_active ? 'Job alerts are on. We will email you when new jobs match.' : 'Saved. Job alerts are off.')
+      const a = await api('/seeker/alerts', { method: 'POST', body: { keywords, location: loc.trim() || null, is_active: true } })
+      setAlerts((l) => [...l, a]); closeForm(); setOk('Alert added. We will email you when new jobs match.')
     } catch (x) { setErr(x.message) } finally { setBusy(false) }
   }
-  if (!loaded) return err ? <div className="alert">{err}</div> : <div className="card skel" />
+  const toggle = async (a) => {
+    setErr(''); setOk('')
+    try {
+      const r = await api('/seeker/alerts/' + a.id, { method: 'PUT', body: { keywords: a.keywords, location: a.location, is_active: !a.is_active } })
+      setAlerts((l) => l.map((x) => (x.id === a.id ? r : x)))
+    } catch (x) { setErr(x.message) }
+  }
+  const remove = async (a) => {
+    if (!window.confirm(`Delete the alert "${a.keywords.join(', ')}"?`)) return
+    setErr(''); setOk('')
+    try { await api('/seeker/alerts/' + a.id, { method: 'DELETE' }); setAlerts((l) => l.filter((x) => x.id !== a.id)); setOk('Alert deleted.') }
+    catch (x) { setErr(x.message) }
+  }
+
   return (
     <div id="sec-alerts" className="card pad-card sk-sec">
-      <div className="sk-split"><div><h3>Job Alerts</h3><p className="muted">Get an email when new jobs match your keywords. We check every hour.</p></div></div>
-      <form onSubmit={submit} className="form">
-        <div className="avail">
-          <strong id="alerts-lbl">Subscribe to Job Alerts</strong>
-          <button type="button" role="switch" aria-checked={on} aria-labelledby="alerts-lbl" className={'tog' + (on ? ' on' : '')} onClick={() => { setOn(!on); setOk('') }} />
-        </div>
-        <label>Keywords (comma separated, e.g., React, Python)
-          <input value={kw} maxLength={400} placeholder="React, Python" onChange={(e) => { setKw(e.target.value); setOk('') }} />
-        </label>
-        {err && <div className="alert">{err}</div>}
-        {ok && <div className="alert ok" role="status">{ok}</div>}
-        <div className="acts"><button className="btn btn-primary sm" disabled={busy}>{busy ? 'Saving…' : 'Save alerts'}</button></div>
-      </form>
+      <div className="sk-split">
+        <div><h3>Job Alerts <span className="muted">({alerts.length}/{MAX_ALERTS})</span></h3>
+          <p className="muted">Get an email when new jobs match an alert. Add up to {MAX_ALERTS} alerts, each with its own keywords and location. We check every hour.</p></div>
+        {!adding && <button type="button" className="btn btn-primary sm" disabled={full} title={full ? `You can have up to ${MAX_ALERTS} alerts` : ''} onClick={() => { setAdding(true); setOk(''); setErr('') }}>+ Add Alert</button>}
+      </div>
+
+      {full && !adding && <div className="alert warn">You have reached the limit of {MAX_ALERTS} alerts. Delete one to add another.</div>}
+
+      {adding && (
+        <form onSubmit={add} className="form sk-edit">
+          <label>Keywords (comma separated, e.g., React, Python)
+            <input value={kw} maxLength={400} autoFocus placeholder="React, Python" onChange={(e) => setKw(e.target.value)} /></label>
+          <label>Location (optional)
+            <input value={loc} maxLength={150} placeholder="e.g. Rawalpindi, Lahore or Remote" onChange={(e) => setLoc(e.target.value)} /></label>
+          {err && <div className="alert">{err}</div>}
+          <div className="acts"><button className="btn btn-primary sm" disabled={busy}>{busy ? 'Saving…' : 'Save alert'}</button>
+            <button type="button" className="btn btn-outline sm" onClick={closeForm}>Cancel</button></div>
+        </form>
+      )}
+
+      {alerts.length === 0 && !adding
+        ? <p className="muted">You have no job alerts yet. Click “Add Alert” to create your first one.</p>
+        : <div className="sk-items">{alerts.map((a) => (
+          <div key={a.id} className="sk-item avail" style={{ opacity: a.is_active ? 1 : 0.6 }}>
+            <div style={{ minWidth: 0 }}>
+              <div className="sk-tags">{a.keywords.map((k) => <span key={k} className="sk-tag">{k}</span>)}</div>
+              <div className="muted small">{a.location ? '📍 ' + a.location : 'Any location'} · {a.is_active ? 'Active' : 'Paused'}</div>
+            </div>
+            <div className="acts" style={{ alignItems: 'center' }}>
+              <button type="button" role="switch" aria-checked={a.is_active} aria-label={(a.is_active ? 'Pause' : 'Turn on') + ' alert ' + a.keywords.join(', ')}
+                className={'tog' + (a.is_active ? ' on' : '')} onClick={() => toggle(a)} />
+              <button type="button" className="btn btn-ghost sm danger" onClick={() => remove(a)}>Delete</button>
+            </div>
+          </div>))}</div>}
+
+      {!adding && err && <div className="alert">{err}</div>}
+      {ok && <div className="alert ok" role="status">{ok}</div>}
     </div>
   )
 }
