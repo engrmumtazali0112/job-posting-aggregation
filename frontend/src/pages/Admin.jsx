@@ -10,7 +10,7 @@ const SL = ({ to, children }) => <Link to={to} className="stat-link">{children}<
 export const Layout = () => (
   <PanelLayout title="Admin" items={[
     ['/admin', 'Dashboard', true], ['/admin/jobs', 'Jobs'], ['/admin/users', 'Users'],
-    ['/admin/companies', 'Companies'], ['/admin/settings', 'Sources & settings']]} />
+    ['/admin/companies', 'Companies'], ['/notifications', 'Notifications'], ['/admin/settings', 'Sources & settings']]} />
 )
 
 export function Dashboard() {

@@ -10,6 +10,7 @@ from .config import settings
 from .database import get_db
 from .models import User
 from .security import hash_password, create_token
+from .services import notify_admins
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -48,6 +49,8 @@ def google_login(data: GoogleIn, db: Session = Depends(get_db)):
             auth_provider="google"
         )
         db.add(user)
+        db.flush()
+        notify_admins(db, f"New user registered: {user.full_name or email} (job seeker, Google).", "/admin/users")
         db.commit()
         db.refresh(user)
     elif not user.is_verified:                 # Google has just proven that this person owns the address

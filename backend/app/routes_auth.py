@@ -14,6 +14,7 @@ from .emailer import send_email
 from .models import User, Company
 from .security import hash_password, verify_password, create_token, current_user
 from .schemas import ForgotPasswordIn, ResetPasswordIn
+from .services import notify_admins
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -99,6 +100,8 @@ def register(data: RegisterIn, db: Session = Depends(get_db)):
     if data.role == "employer":
         db.add(Company(user_id=user.id, name=data.company_name, website=data.website))
     token = start_verification(user)
+    who = user.full_name or (data.company_name if data.role == "employer" else None) or user.email
+    notify_admins(db, f"New user registered: {who} ({'employer' if data.role == 'employer' else 'job seeker'}).", "/admin/users")
     db.commit()
     link = send_verification_email(user, token)                    # after the commit, so a failed save never sends a link
     out = {"id": user.id, "email": user.email, "role": user.role,

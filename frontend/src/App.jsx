@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, Route, Routes, Navigate, useLocation, useParams 
 import { useAuth } from './auth.jsx'
 import { api } from './api'
 import Icon from './components/Icon.jsx'
+import logo from './assets/JobBoard Trusty Growth Icons.png'
 import { useOutside } from './components/ui.jsx'
 import Home from './pages/Home.jsx'
 import Jobs from './pages/Jobs.jsx'
@@ -23,7 +24,13 @@ const HIRING_MENU = [['/employer/dashboard', 'dash', 'Employer dashboard'], ['/e
 const MENU = {
   job_seeker: SEEKER_MENU,
   employer: HIRING_MENU,
-  admin: [['/admin', 'dash', 'Admin dashboard'], ['/admin/jobs', 'briefcase', 'Review jobs']],
+  admin: [['/admin', 'dash', 'Admin dashboard'], ['/admin/jobs', 'briefcase', 'Review jobs'], ['/notifications', 'bell', 'Notifications']],
+}
+
+// The PNG is a square with large white margins, so .logo-crop (home.css) crops it to the artwork.
+// Change the size with --logo-h on .logo-crop instead of editing the image.
+function Logo() {
+  return <span className="logo-crop"><img src={logo} alt="JobBoard" /></span>
 }
 
 function Navbar() {
@@ -44,7 +51,7 @@ function Navbar() {
   return (
     <header className="nav2">
       <div className="wrap nav2-in">
-        <Link to="/" className="brand">JobBoard</Link>
+        <Link to="/" className="logo-link" aria-label="JobBoard home"><Logo /></Link>
         <NavLink to="/" end className="tl">Home</NavLink>
         <NavLink to="/companies" className="tl">Company reviews</NavLink>
         <div className="nav-spacer" />
@@ -52,7 +59,7 @@ function Navbar() {
           <>
             {role === 'job_seeker' && <Link to="/my/saved" className="ibtn" title="Saved jobs"><Icon name="bookmark" fill /></Link>}
             {role !== 'admin' && <NavLink to="/messages" className="ibtn" title="Messages"><Icon name="chat" fill />{cnt(msgCount)}</NavLink>}
-            {role !== 'admin' && <NavLink to="/notifications" className="ibtn" title="Notifications"><Icon name="bell" fill />{cnt(notifCount)}</NavLink>}
+            <NavLink to="/notifications" className="ibtn" title="Notifications"><Icon name="bell" fill />{cnt(notifCount)}</NavLink>
             <div className="menu-wrap" ref={ref}>
               <button className={'ibtn' + (open ? ' active' : '')} onClick={() => setOpen(!open)} title="Account" aria-haspopup="menu" aria-expanded={open}><Icon name="user" fill /></button>
               {open && (
@@ -92,12 +99,12 @@ function Footer() {
       <div className="wrap">
         <div className="sitefoot-in">
           <div className="col wide">
-            <div className="brand">JobBoard</div>
+            <Link to="/" className="logo-link" aria-label="JobBoard home"><Logo /></Link>
             <span>Connecting people with jobs from top sources and verified employers across Pakistan.</span>
             <div className="social">
               {SOCIAL.map(([label, href, icon]) => (
                 <a key={label} href={href} target="_blank" rel="noopener noreferrer" aria-label={label} title={label}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{icon}</svg>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{icon}</svg>
                 </a>
               ))}
             </div>
@@ -125,6 +132,7 @@ function RoleShell() {
   const { user } = useAuth()
   if (user?.role === 'employer') return <E.Layout />
   if (user?.role === 'job_seeker') return <S.Layout />
+  if (user?.role === 'admin') return <A.Layout />
   return <Outlet />
 }
 
