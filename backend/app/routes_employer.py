@@ -1,7 +1,8 @@
 from datetime import datetime
+import re
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select, func, or_
 from sqlalchemy.orm import Session
 from .database import get_db
@@ -362,6 +363,22 @@ class CompanyIn(BaseModel):
     website: str | None = Field(default=None, max_length=255)
     description: str | None = Field(default=None, max_length=5000)
     logo_url: str | None = Field(default=None, max_length=500)
+    whatsapp_number: str | None = Field(default=None, max_length=30)
+
+    @field_validator("whatsapp_number", mode="before")
+    @classmethod
+    def clean_whatsapp(cls, v):
+        """Store digits only, in international format (wa.me needs no +, spaces or leading zeros). 0300 1234567 -> 923001234567."""
+        if v is None or not str(v).strip():
+            return None
+        d = re.sub(r"\D", "", str(v))
+        if d.startswith("00"):
+            d = d[2:]
+        elif d.startswith("0") and len(d) == 11:        # local Pakistani mobile format
+            d = "92" + d[1:]
+        if not 10 <= len(d) <= 15:
+            raise ValueError("Enter the WhatsApp number with country code, e.g. +92 300 1234567")
+        return d
 
 class CompanyOut(CompanyIn):
     domain_verified: bool
@@ -381,6 +398,7 @@ def update_company_profile(data: CompanyIn, user: User = Depends(require_role("e
     company.website = data.website or None
     company.description = data.description or None
     company.logo_url = data.logo_url or None
+    company.whatsapp_number = data.whatsapp_number
     for job in db.scalars(select(Job).where(Job.company_id == company.id)):
         job.company_name = company.name
     db.commit()

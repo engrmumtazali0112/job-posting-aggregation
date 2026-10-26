@@ -22,6 +22,22 @@ const FAQ = [
   ['What is a verified company?', 'Admins can verify your company website. A verified badge helps job seekers trust your listings.'],
 ]
 
+/* ---------------- landing images (Unsplash) ---------------- */
+const U = (id) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=1200&q=80`
+const LANDING_IMG = {
+  hero: { src: U('photo-1522071820081-009f0129c71c'), alt: 'A diverse team collaborating around laptops in a bright, modern office' },
+  dashboard: { src: U('photo-1573496359142-b8d87734a5a2'), alt: 'A smiling professional reviewing candidates on a laptop' },
+  brand: { src: U('photo-1521791136064-7986c2920216'), alt: 'Two colleagues shaking hands, representing a trusted company culture' },
+}
+function LandingImage({ img, eager = false }) {
+  const [failed, setFailed] = useState(false)
+  return (
+    <div className="e-img">
+      {!failed && <img src={img.src} alt={img.alt} loading={eager ? 'eager' : 'lazy'} onError={() => setFailed(true)} />}
+    </div>
+  )
+}
+
 export function LandingPage() {
   const { user } = useAuth()
   const cta = user?.role === 'employer' ? '/employer/dashboard/post' : '/register?role=employer'
@@ -34,7 +50,7 @@ export function LandingPage() {
           <div className="acts"><Link to={cta} className="btn btn-primary">Post a job</Link>
             {user?.role === 'employer' && <Link to="/employer/dashboard" className="btn btn-outline">Go to dashboard</Link>}</div>
         </div>
-        <div className="img-ph">Hero image placeholder<br />(team or office photo)</div>
+        <LandingImage img={LANDING_IMG.hero} eager />
       </section>
 
       <section className="e-stats">
@@ -50,9 +66,9 @@ export function LandingPage() {
           <div className="card e-step" key={t}><div className="n">{i + 1}</div><h3>{t}</h3><p className="muted">{d}</p></div>))}
       </section>
 
-      <section className="e-feat"><div className="img-ph">Image placeholder<br />(candidate dashboard)</div>
+      <section className="e-feat"><LandingImage img={LANDING_IMG.dashboard} />
         <div><h2 style={{ fontSize: 28, marginBottom: 10 }}>Manage every candidate</h2><p className="muted">Track applicants from new to hired. Candidates are notified automatically when you view their application or change their status.</p></div></section>
-      <section className="e-feat rev"><div className="img-ph">Image placeholder<br />(company reviews)</div>
+      <section className="e-feat rev"><LandingImage img={LANDING_IMG.brand} />
         <div><h2 style={{ fontSize: 28, marginBottom: 10 }}>Build your employer brand</h2><p className="muted">Your company page shows your open jobs and reviews from real job seekers, helping you attract the right people.</p></div></section>
 
       <h2 style={{ fontSize: 30, textAlign: 'center' }}>Frequently asked questions</h2>
@@ -389,7 +405,7 @@ export function CompanyProfile() {
   const set = (k) => (e) => setC({ ...c, [k]: e.target.value })
   const save = async (e) => {
     e.preventDefault(); setBusy(true); setMsg(null)
-    try { const r = await api('/employer/company', { method: 'PUT', body: { name: c.name, website: c.website || null, description: c.description || null, logo_url: c.logo_url || null } }); setC(r); refresh(); setMsg({ ok: true, t: 'Company profile saved.' }) }
+    try { const r = await api('/employer/company', { method: 'PUT', body: { name: c.name, website: c.website || null, description: c.description || null, logo_url: c.logo_url || null, whatsapp_number: c.whatsapp_number || null } }); setC(r); refresh(); setMsg({ ok: true, t: 'Company profile saved.' }) }
     catch (x) { setMsg({ ok: false, t: x.message }) } finally { setBusy(false) }
   }
   return (
@@ -399,6 +415,8 @@ export function CompanyProfile() {
         <label>Company name<input required minLength={2} value={c.name} onChange={set('name')} /></label>
         <label>Website<input value={c.website || ''} onChange={set('website')} placeholder="https://" /></label>
         <label>Logo URL<input value={c.logo_url || ''} onChange={set('logo_url')} placeholder="https://" /></label>
+        <label>WhatsApp number (optional)<input type="tel" value={c.whatsapp_number || ''} onChange={set('whatsapp_number')} placeholder="+92 300 1234567" />
+          <span className="muted small">Adds a green "Apply via WhatsApp" button to your jobs. Include the country code.</span></label>
         <label>About the company<textarea rows={6} maxLength={5000} value={c.description || ''} onChange={set('description')} /></label>
         <div className="muted">Verification: {c.domain_verified ? 'Verified ✓' : 'Not verified. Changing your website resets verification.'}</div>
         {msg && <div className={msg.ok ? 'alert ok' : 'alert'}>{msg.t}</div>}

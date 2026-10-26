@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from .database import get_db
 from .models import User, Job, Application, SavedJob, SeekerProfile, Company, JobAlert
 from .security import require_role
-from .schemas import ApplicationIn, ProfileIn, JobPublic, JobAlertIn, JobAlertOut
+from .schemas import ApplicationIn, ProfileIn, JobPublic, JobAlertIn, JobAlertOut, MAX_ALERTS
 from .services import notify
 from . import storage, ats, resume_builder
 
@@ -118,26 +118,61 @@ def resume_ats_score(user: User = Depends(seeker), db: Session = Depends(get_db)
     return ats.ats_score(profile_out(user, p))
 
 
-# --- Job alerts (the scheduler emails matching new jobs, see scheduler.py) ---
-@router.get("/alerts", response_model=JobAlertOut)
-def get_alerts(user: User = Depends(seeker), db: Session = Depends(get_db)):
-    a = db.scalar(select(JobAlert).where(JobAlert.user_id == user.id))
-    return JobAlertOut(keywords=list(a.keywords or []) if a else [], is_active=bool(a and a.is_active))
+# --- Job alerts: up to MAX_ALERTS (7) per seeker, each = keywords + optional location (the scheduler emails matches, see scheduler.py) ---
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)             # DateTime columns hold naive UTC
 
 
-@router.put("/alerts", response_model=JobAlertOut)
-def save_alerts(data: JobAlertIn, user: User = Depends(seeker), db: Session = Depends(get_db)):
-    started = datetime.now(timezone.utc).replace(tzinfo=None)         # DateTime columns hold naive UTC
-    a = db.scalar(select(JobAlert).where(JobAlert.user_id == user.id))
+def _same_alert(a: JobAlert, keywords: list[str], location: str | None) -> bool:
+    return ({k.lower() for k in (a.keywords or [])} == {k.lower() for k in keywords}
+            and (a.location or "").strip().lower() == (location or "").strip().lower())
+
+
+def _owned_alert(db: Session, user: User, alert_id: int) -> JobAlert:
+    a = db.scalar(select(JobAlert).where(JobAlert.id == alert_id, JobAlert.user_id == user.id))
     if not a:
-        a = JobAlert(user_id=user.id, last_checked_at=started)
-        db.add(a)
-    elif data.is_active and not a.is_active:
-        a.last_checked_at = started                                    # turned back on: only jobs from now on, never a flood of old ones
-    a.keywords = data.keywords
-    a.is_active = data.is_active
+        raise HTTPException(404, "Alert not found")
+    return a
+
+
+@router.get("/alerts", response_model=list[JobAlertOut])
+def list_alerts(user: User = Depends(seeker), db: Session = Depends(get_db)):
+    return db.scalars(select(JobAlert).where(JobAlert.user_id == user.id).order_by(JobAlert.id)).all()
+
+
+@router.post("/alerts", response_model=JobAlertOut, status_code=201)
+def create_alert(data: JobAlertIn, user: User = Depends(seeker), db: Session = Depends(get_db)):
+    existing = db.scalars(select(JobAlert).where(JobAlert.user_id == user.id)).all()
+    if len(existing) >= MAX_ALERTS:
+        raise HTTPException(400, f"You can have up to {MAX_ALERTS} job alerts. Delete one to add another.")
+    if any(_same_alert(a, data.keywords, data.location) for a in existing):
+        raise HTTPException(409, "You already have an alert with these keywords and location.")
+    a = JobAlert(user_id=user.id, keywords=data.keywords, location=data.location, is_active=data.is_active, last_checked_at=_utc_now())
+    db.add(a)
     db.commit()
-    return JobAlertOut(keywords=list(a.keywords or []), is_active=bool(a.is_active))
+    db.refresh(a)
+    return a
+
+
+@router.put("/alerts/{alert_id}", response_model=JobAlertOut)
+def update_alert(alert_id: int, data: JobAlertIn, user: User = Depends(seeker), db: Session = Depends(get_db)):
+    a = _owned_alert(db, user, alert_id)
+    others = db.scalars(select(JobAlert).where(JobAlert.user_id == user.id, JobAlert.id != a.id)).all()
+    if any(_same_alert(o, data.keywords, data.location) for o in others):
+        raise HTTPException(409, "You already have an alert with these keywords and location.")
+    if data.is_active and not a.is_active:
+        a.last_checked_at = _utc_now()                                 # turned back on: only jobs from now on, never a flood of old ones
+    a.keywords, a.location, a.is_active = data.keywords, data.location, data.is_active
+    db.commit()
+    db.refresh(a)
+    return a
+
+
+@router.delete("/alerts/{alert_id}")
+def delete_alert(alert_id: int, user: User = Depends(seeker), db: Session = Depends(get_db)):
+    db.delete(_owned_alert(db, user, alert_id))
+    db.commit()
+    return {"ok": True}
 
 
 # --- Dashboard ---
