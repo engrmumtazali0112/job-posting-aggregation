@@ -46,7 +46,7 @@ export default function Apply() {
     if (missing) { setErr('Please answer: ' + missing.text); return }
     setBusy(true)
     try {
-      await api(`/seeker/jobs/${id}/apply`, { method: 'POST', body: { cover_letter: cover.trim() || null,
+      await api(`/seeker/jobs/${id}/apply`, { method: 'POST', body: { cover_letter: cover.trim() || null, resume_url: profile?.resume_url || null,
         answers: job.questions.map((q) => ({ id: q.id, answer: String(ans[q.id] || '').trim() })).filter((a) => a.answer) } })
       setDone(true)
     } catch (x) { setErr(x.message) } finally { setBusy(false) }
@@ -63,9 +63,12 @@ export default function Apply() {
         </div>
         {job.questions.length > 0 && <>
           <h3>Questions from the employer</h3>
-          {job.questions.map((q) => (
-            <label key={q.id} className="ap-q"><span>{q.text}{q.required && <b className="req"> *</b>}</span>
-              <Field q={q} value={ans[q.id] || ''} onChange={set(q.id)} /></label>))}
+          {job.questions.map((q) => {
+            const Wrap = q.type === 'yes_no' ? 'div' : 'label'          // Yes/No has its own labels; nesting labels can swallow clicks
+            return (
+              <Wrap key={q.id} className="ap-q"><span>{q.text}{q.required && <b className="req"> *</b>}</span>
+                <Field q={q} value={ans[q.id] || ''} onChange={set(q.id)} /></Wrap>)
+          })}
         </>}
         <label>Cover letter (optional)<textarea rows={5} maxLength={5000} value={cover} onChange={(e) => setCover(e.target.value)} placeholder="Tell the employer why you are a good fit" /></label>
         {err && <div className="alert" role="alert">{err}</div>}

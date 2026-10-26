@@ -4,6 +4,13 @@ import { api, payText, JOB_TYPES, WORKPLACES, timeAgo } from '../api'
 import { useAuth } from '../auth.jsx'
 import Icon from './Icon.jsx'
 
+// Inline SVG chat bubble (no icon font needed)
+const WhatsAppIcon = ({ size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z" />
+  </svg>
+)
+
 // SEO: JobPosting structured data for the job on screen
 function useJobSchema(job) {
   useEffect(() => {
@@ -42,6 +49,7 @@ export default function JobPane({ job, full = false, saved, applied, onSave, onA
 
   const emp = job.source_type === 'employer'
   const seeker = user?.role === 'job_seeker'
+  const hasQuestions = (job.questions?.length || 0) > 0     // screening questions: the quick form cannot answer them, so send people to the full apply page
   const pay = payText(job)
 
   const openApply = async () => {
@@ -72,17 +80,24 @@ export default function JobPane({ job, full = false, saved, applied, onSave, onA
       <div className="pl">{[pay, emp ? JOB_TYPES[job.job_type] : null].filter(Boolean).join(' - ')}</div>
 
       <div className="pane-acts">
-        {emp && seeker && !applied && <button className="btn btn-primary" onClick={openApply}>Apply now</button>}
+        {emp && seeker && !applied && (hasQuestions
+          ? <Link className="btn btn-primary" to={`/jobs/${job.id}/apply`}>Answer questions &amp; apply</Link>
+          : <button className="btn btn-primary" onClick={openApply}>Apply now</button>)}
         {emp && seeker && applied && <span className="status s-published">Applied ✓</span>}
         {emp && !user && <Link className="btn btn-primary" to="/login">Log in to apply</Link>}
         {emp && user && !seeker && <span className="muted">Sign in as a job seeker to apply.</span>}
         {job.apply_url && <a className={'btn ' + (emp ? 'btn-outline' : 'btn-primary')} href={job.apply_url} target="_blank" rel="noopener noreferrer">{emp ? 'Company website' : 'Apply now'} <Icon name="external" size={15} /></a>}
+        {emp && job.allow_whatsapp_apply !== false && job.company_whatsapp && (
+          <a className="btn btn-whatsapp" target="_blank" rel="noopener noreferrer"
+            href={`https://wa.me/${job.company_whatsapp}?text=${encodeURIComponent(`Hi, I am interested in the ${job.title} role on JobBoard.`)}`}>
+            <WhatsAppIcon /> Apply via WhatsApp
+          </a>)}
         {canSave && <button className={'sqbtn' + (saved ? ' on' : '')} onClick={() => onSave?.(job)} title={saved ? 'Saved' : 'Save job'}><Icon name="bookmark" fill={saved} /></button>}
         <button className="sqbtn" onClick={share} title="Copy link"><Icon name="share" /></button>
       </div>
       {msg && <div className={msg.ok ? 'alert ok' : 'alert'}>{msg.t}</div>}
 
-      {show && (
+      {show && !hasQuestions && (
         <form className="form apply-box" onSubmit={apply}>
           <label>Cover letter (optional)<textarea rows={6} maxLength={5000} value={f.cover_letter} onChange={(e) => setF({ ...f, cover_letter: e.target.value })} /></label>
           <label>Link to your resume<input value={f.resume_url} onChange={(e) => setF({ ...f, resume_url: e.target.value })} placeholder="https://" /></label>

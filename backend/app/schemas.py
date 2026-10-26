@@ -235,3 +235,31 @@ class ResetPasswordIn(BaseModel):
     @classmethod
     def strong_enough(cls, v: str) -> str:
         return check_password_strength(v)
+
+# --- job alerts ---
+class JobAlertIn(BaseModel):
+    keywords: list[str] = Field(default_factory=list, max_length=10)
+    is_active: bool = True
+
+    @field_validator("keywords", mode="before")
+    @classmethod
+    def clean_keywords(cls, v):
+        if isinstance(v, str):                                 # the form can send "React, Python"
+            v = v.split(",")
+        seen, out = set(), []
+        for k in v or []:
+            k = str(k).strip()[:40]
+            if k and k.lower() not in seen:                    # trim, drop blanks and case-insensitive duplicates
+                seen.add(k.lower())
+                out.append(k)
+        return out
+
+    @model_validator(mode="after")
+    def need_keywords(self):
+        if self.is_active and not self.keywords:
+            raise ValueError("Add at least one keyword to turn job alerts on")
+        return self
+
+class JobAlertOut(BaseModel):
+    keywords: list[str] = []
+    is_active: bool = False
