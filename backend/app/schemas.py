@@ -84,6 +84,7 @@ class _JobBase(BaseModel):
     apply_url: str | None
     source_type: str
     company_id: int | None = None
+    company_whatsapp: str | None = None        # the company's WhatsApp number (digits, with country code); read from Job.company_whatsapp
     created_at: datetime
     model_config = {"from_attributes": True}
 
@@ -236,9 +237,12 @@ class ResetPasswordIn(BaseModel):
     def strong_enough(cls, v: str) -> str:
         return check_password_strength(v)
 
-# --- job alerts ---
+# --- job alerts (up to MAX_ALERTS per seeker, each = keywords + optional location) ---
+MAX_ALERTS = 7
+
 class JobAlertIn(BaseModel):
     keywords: list[str] = Field(default_factory=list, max_length=10)
+    location: str | None = Field(default=None, max_length=150)
     is_active: bool = True
 
     @field_validator("keywords", mode="before")
@@ -254,12 +258,27 @@ class JobAlertIn(BaseModel):
                 out.append(k)
         return out
 
+    @field_validator("location", mode="before")
+    @classmethod
+    def clean_location(cls, v):
+        v = v.strip() if isinstance(v, str) else v
+        return v or None
+
     @model_validator(mode="after")
     def need_keywords(self):
-        if self.is_active and not self.keywords:
-            raise ValueError("Add at least one keyword to turn job alerts on")
+        if not self.keywords:
+            raise ValueError("Add at least one keyword to create a job alert")
         return self
 
 class JobAlertOut(BaseModel):
+    id: int
     keywords: list[str] = []
-    is_active: bool = False
+    location: str | None = None
+    is_active: bool = True
+    created_at: datetime | None = None
+    model_config = {"from_attributes": True}
+
+    @field_validator("keywords", mode="before")
+    @classmethod
+    def no_none(cls, v):
+        return list(v or [])
