@@ -34,6 +34,16 @@ def _matches(job: Job, keywords: list[str]) -> bool:
     return any(k.lower() in text for k in keywords if k.strip())
 
 
+def _location_ok(job: Job, location: str | None) -> bool:
+    """No location on the alert = anywhere. Otherwise the job's location must contain it; "remote" also matches remote-flagged jobs."""
+    loc = (location or "").strip().lower()
+    if not loc:
+        return True
+    if loc in (job.location or "").lower():
+        return True
+    return loc == "remote" and job.workplace_type == "remote"
+
+
 def _alert_email(user: User, keywords: list[str], jobs: list[Job]) -> tuple[str, str]:
     site = settings.site_url.rstrip("/")
     shown = jobs[:MAX_JOBS_PER_EMAIL]
@@ -48,37 +58,53 @@ def _alert_email(user: User, keywords: list[str], jobs: list[Job]) -> tuple[str,
 
 
 def alerts_job():
-    """Runs every hour: emails each subscribed seeker the NEW published jobs that match their keywords.
+    """Runs every hour: emails each subscribed seeker the NEW published jobs that match any of their alerts (up to 7, each = keywords
+    + optional location). A user with several alerts gets ONE combined email, and a job that matches two alerts is listed once.
     Each alert remembers last_checked_at, so a job is never emailed twice and a restart does not lose or repeat anything."""
     started = _utcnow()
     try:
         with SessionLocal() as db:
             alerts = db.scalars(select(JobAlert).where(JobAlert.is_active.is_(True))).all()
             if not alerts:
+                print("[alerts] no active alerts")
                 return
             since = {a.id: max(_naive(a.last_checked_at) or started - timedelta(hours=1), started - MAX_BACKLOG) for a in alerts}
             jobs = db.scalars(select(Job).where(Job.status == "published", Job.created_at > min(since.values()))
                               .order_by(Job.created_at.desc()).limit(1000)).all()
-            sent = 0
+            by_user: dict[int, list[JobAlert]] = {}
             for a in alerts:
-                keywords = [k for k in (a.keywords or []) if k and k.strip()]
-                user = db.get(User, a.user_id)
-                if not keywords or not user or user.is_active is False or (not user.is_verified and user.verification_token):
-                    a.last_checked_at = started                      # nothing to send to this one; do not re-scan the same jobs
-                    db.commit()
-                    continue
-                hits = [j for j in jobs if _naive(j.created_at) > since[a.id] and _matches(j, keywords)]
+                by_user.setdefault(a.user_id, []).append(a)
+            sent = 0
+            for uid, user_alerts in by_user.items():
+                user = db.get(User, uid)
+                can_mail = bool(user) and user.is_active is not False and not (not user.is_verified and user.verification_token)
+                hits: dict[int, Job] = {}
+                shown_keywords: list[str] = []
+                if can_mail:
+                    for a in user_alerts:
+                        keywords = [k for k in (a.keywords or []) if k and k.strip()]
+                        if not keywords:
+                            continue
+                        found = [j for j in jobs if _naive(j.created_at) > since[a.id] and _matches(j, keywords) and _location_ok(j, a.location)]
+                        if found:
+                            hits.update({j.id: j for j in found})
+                            shown_keywords += [k for k in keywords if k.lower() not in {s.lower() for s in shown_keywords}]
                 if hits:
                     try:
-                        subject, body = _alert_email(user, keywords, hits)
-                        send_email(user.email, subject, body)
-                        sent += 1
-                    except Exception as exc:                         # keep last_checked_at, so the next run tries again
+                        ordered = sorted(hits.values(), key=lambda j: _naive(j.created_at), reverse=True)
+                        subject, body = _alert_email(user, shown_keywords, ordered)
+                        if send_email(user.email, subject, body):
+                            sent += 1
+                        else:                                              # SMTP not configured: keep last_checked_at so a later run can still send
+                            print("[alerts] SMTP is not configured, so nothing was sent to", user.email)
+                            continue
+                    except Exception as exc:                               # keep last_checked_at, so the next run tries again
                         print("[alerts] could not email", user.email, repr(exc))
                         continue
-                a.last_checked_at = started
-                db.commit()
-            print(f"[alerts] checked {len(alerts)} alert(s), sent {sent} email(s)")
+                for a in user_alerts:
+                    a.last_checked_at = started
+                db.commit()                                                # nothing to send to this user: do not re-scan the same jobs
+            print(f"[alerts] checked {len(alerts)} alert(s) for {len(by_user)} user(s), sent {sent} email(s)")
     except Exception as exc:                                         # never let a failed run stop the scheduler
         print("[alerts] failed:", repr(exc))
 
