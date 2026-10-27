@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     access_token_minutes: int = 60 * 24
     require_approval: bool = True
     jooble_api_key: str = ""
+    openrouter_api_key: str = ""            # OpenRouter key (starts with sk-or-v1-); powers the admin "AI parse job text" ingest. Empty = feature off
+    openrouter_model: str = "openrouter/free"   # auto-picks an available free model; or set e.g. meta-llama/llama-3.3-70b-instruct:free
     cors_origins: str = "http://localhost:5173"
     cors_origin_regex: str = ""               # optional, e.g. ^https://job-board-frontend-[a-z0-9-]+\.vercel\.app$ for Vercel preview URLs
     require_email_verification: bool = True   # new accounts must click the emailed link before they can log in (set false to turn off)
@@ -39,7 +41,7 @@ class Settings(BaseSettings):
     # utf-8-sig also copes with a .env that was saved with a byte-order mark. Real OS environment variables (Render) still win.
     model_config = {"env_file": (str(BACKEND_DIR / ".env"), ".env"), "env_file_encoding": "utf-8-sig", "extra": "ignore"}
 
-    @field_validator("smtp_host", "smtp_user", "smtp_password", "smtp_from_email", "site_url", mode="before")
+    @field_validator("smtp_host", "smtp_user", "smtp_password", "smtp_from_email", "site_url", "openrouter_api_key", mode="before")
     @classmethod
     def _clean(cls, v):
         if isinstance(v, str):                # stray spaces or quotes pasted around a value would break login / links

@@ -3,12 +3,12 @@ import { JOB_TYPES, WORKPLACES, TIMELINES, payText } from '../api'
 
 const STEPS = ['Basics', 'Details', 'Pay', 'Description', 'Review']
 export const emptyJob = { title: '', workplace_type: 'in_person', location: '', job_type: 'full_time', openings: 1,
-  hiring_timeline: '', salary_min: '', salary_max: '', salary_period: 'month', description: '', apply_url: '' }
+  hiring_timeline: '', salary_min: '', salary_max: '', salary_period: 'month', description: '', apply_url: '', allow_whatsapp_apply: true }
 
 export const toForm = (j) => ({ title: j.title, workplace_type: j.workplace_type || 'in_person', location: j.location || '',
   job_type: j.job_type || 'full_time', openings: j.openings || 1, hiring_timeline: j.hiring_timeline || '',
   salary_min: j.salary_min ?? '', salary_max: j.salary_max ?? '', salary_period: j.salary_period || 'month',
-  description: j.description || '', apply_url: j.apply_url || '' })
+  description: j.description || '', apply_url: j.apply_url || '', allow_whatsapp_apply: j.allow_whatsapp_apply !== false })
 
 export default function JobForm({ initial = emptyJob, submitLabel = 'Submit job', onSubmit }) {
   const [f, setF] = useState(initial)
@@ -23,7 +23,7 @@ export default function JobForm({ initial = emptyJob, submitLabel = 'Submit job'
     title: f.title.trim(), workplace_type: f.workplace_type, location: f.location.trim(), job_type: f.job_type,
     openings: Number(f.openings) || 1, hiring_timeline: f.hiring_timeline || null,
     salary_min: num(f.salary_min), salary_max: num(f.salary_max), salary_period: f.salary_period,
-    description: f.description, apply_url: f.apply_url.trim() || null,
+    description: f.description, apply_url: f.apply_url.trim() || null, allow_whatsapp_apply: !!f.allow_whatsapp_apply,
   })
 
   const check = (s) => {
@@ -78,6 +78,8 @@ export default function JobForm({ initial = emptyJob, submitLabel = 'Submit job'
               {TIMELINES.map((t) => <option key={t}>{t}</option>)}
             </select></label>
           <label>Apply link (optional)<input value={f.apply_url} onChange={set('apply_url')} placeholder="https://" /></label>
+          <label className="chk"><input type="checkbox" checked={!!f.allow_whatsapp_apply} onChange={(e) => put('allow_whatsapp_apply', e.target.checked)} /> Allow candidates to contact me via WhatsApp
+            <span className="muted small"> (uses the WhatsApp number in your Company profile)</span></label>
         </>}
 
         {step === 2 && <>

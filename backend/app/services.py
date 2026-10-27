@@ -41,6 +41,7 @@ def apply_job_fields(job: Job, data: JobIn) -> None:
     job.salary_period = data.salary_period
     job.description = data.description
     job.apply_url = data.apply_url or None
+    job.allow_whatsapp_apply = data.allow_whatsapp_apply
     if data.questions is not None:
         job.questions = build_questions(data.questions)
 

@@ -415,7 +415,7 @@ export function CompanyProfile() {
         <label>Company name<input required minLength={2} value={c.name} onChange={set('name')} /></label>
         <label>Website<input value={c.website || ''} onChange={set('website')} placeholder="https://" /></label>
         <label>Logo URL<input value={c.logo_url || ''} onChange={set('logo_url')} placeholder="https://" /></label>
-        <label>WhatsApp number (optional)<input type="tel" value={c.whatsapp_number || ''} onChange={set('whatsapp_number')} placeholder="+92 300 1234567" />
+        <label>WhatsApp number (optional)<input type="tel" value={c.whatsapp_number || ''} onChange={set('whatsapp_number')} placeholder="923001234567" />
           <span className="muted small">Adds a green "Apply via WhatsApp" button to your jobs. Include the country code.</span></label>
         <label>About the company<textarea rows={6} maxLength={5000} value={c.description || ''} onChange={set('description')} /></label>
         <div className="muted">Verification: {c.domain_verified ? 'Verified ✓' : 'Not verified. Changing your website resets verification.'}</div>
