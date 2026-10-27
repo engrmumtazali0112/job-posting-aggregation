@@ -4,6 +4,7 @@ import PanelLayout from '../components/PanelLayout.jsx'
 import JobForm, { toForm } from '../components/JobForm.jsx'
 import { Badge, Pager, Stat } from '../components/ui.jsx'
 import Icon from '../components/Icon.jsx'
+import Select from '../components/Select.jsx'
 import { useAuth } from '../auth.jsx'
 import { api, qs, timeAgo } from '../api'
 
@@ -325,9 +326,12 @@ export function Candidates() {
       </div>
       <form className="toolbar" onSubmit={(e) => { e.preventDefault(); load() }}>
         <input placeholder="Search name, email or job" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select value={jobId} onChange={(e) => setJobId(e.target.value)}><option value="">All jobs</option>{jobs.map((j) => <option key={j.id} value={j.id}>{j.title}</option>)}</select>
-        <select value={minMatch} onChange={(e) => setMinMatch(e.target.value)} title="Hide weak Real Match scores"><option value="">Any match</option><option value="45">45% and up</option><option value="70">70% and up</option></select>
-        <select value={sort} onChange={(e) => setSort(e.target.value)}><option value="real">Best Real Match first</option><option value="match">Best resume match first</option><option value="newest">Newest first</option></select>
+        <Select className="custom-select--wide" ariaLabel="Filter by job" placeholder="Loading jobs…" value={jobId} onChange={setJobId}
+          options={[{ value: '', label: 'All jobs' }, ...jobs.map((j) => ({ value: String(j.id), label: j.title }))]} />
+        <Select ariaLabel="Minimum Real Match" title="Hide weak Real Match scores" value={minMatch} onChange={setMinMatch}
+          options={[{ value: '', label: 'Any match' }, { value: '45', label: '45% and up' }, { value: '70', label: '70% and up' }]} />
+        <Select ariaLabel="Sort candidates" value={sort} onChange={setSort}
+          options={[{ value: 'real', label: 'Best Real Match first' }, { value: 'match', label: 'Best resume match first' }, { value: 'newest', label: 'Newest first' }]} />
         <button className="btn btn-outline sm">Search</button>
       </form>
       {note && <div className="alert">{note}</div>}

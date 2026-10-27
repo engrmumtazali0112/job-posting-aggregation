@@ -322,6 +322,31 @@ a{color:inherit;text-decoration:none}
 .faq summary{cursor:pointer;font-weight:700;font-size:16px}.faq p{margin-top:10px;color:var(--mut)}
 .e-cta{background:var(--p);color:#fff;border-radius:24px;padding:44px;text-align:center;margin-bottom:60px}
 .e-cta h2{font-size:30px;margin-bottom:12px}.e-cta .btn{background:#fff;color:var(--p)}
+/* ===== server waking (Render cold start) message on the login form ===== */
+.ax-wake{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+.ax-wake__msg{display:flex;align-items:flex-start;gap:12px;line-height:1.45}
+.ax-spinner{flex:none;width:18px;height:18px;margin-top:2px;border-radius:50%;border:2.5px solid rgba(122,83,0,.25);border-top-color:#7a5300;animation:ax-spin .8s linear infinite}
+@keyframes ax-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.ax-spinner{animation-duration:2.4s}}
+/* ===== custom select (replaces native <select>, see components/Select.jsx) ===== */
+.toolbar{flex-wrap:wrap}
+.toolbar>input{flex:1 1 220px;min-width:180px}
+.custom-select{position:relative;flex:0 1 auto;min-width:170px}
+.custom-select--wide{flex:1 1 260px;max-width:360px}
+.custom-select__btn{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;height:46px;padding:0 14px;border:1px solid var(--line);border-radius:12px;background:var(--field);color:var(--ink);font:500 15px Inter,system-ui,sans-serif;text-align:left;cursor:pointer;box-shadow:0 1px 2px rgba(16,24,40,.05);transition:border-color .15s,box-shadow .15s,background .15s}
+.custom-select__btn:hover{border-color:#c5ccd6;background:#fafbfd}
+.custom-select__btn:focus-visible,.custom-select.open .custom-select__btn{outline:0;border-color:var(--p);box-shadow:0 0 0 3px rgba(31,61,133,.14)}
+.custom-select__btn:disabled{opacity:.6;cursor:not-allowed}
+.custom-select__label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.custom-select__chev{flex:none;color:var(--mut);transition:transform .18s ease,color .18s}
+.custom-select.open .custom-select__chev{transform:rotate(180deg);color:var(--p)}
+.custom-select__menu{position:absolute;z-index:40;top:calc(100% + 6px);left:0;min-width:100%;width:max-content;max-width:min(420px,92vw);max-height:280px;overflow-y:auto;margin:0;padding:6px;list-style:none;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 28px rgba(16,24,40,.14),0 2px 6px rgba(16,24,40,.06);animation:cs-pop .12s ease-out}
+.custom-select__opt{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-radius:9px;font-size:15px;line-height:1.3;color:var(--ink);cursor:pointer}
+.custom-select__opt.active{background:var(--tint)}
+.custom-select__opt.sel{color:var(--p);font-weight:700}
+.custom-select__opt svg{flex:none;color:var(--p)}
+@keyframes cs-pop{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@media(max-width:620px){.custom-select,.custom-select--wide{flex:1 1 100%;width:100%;max-width:none;min-width:0}.custom-select__menu{width:100%;max-width:none}.toolbar>input{flex:1 1 100%}}
 /* ===== footer ===== */
 .sitefoot{background:var(--nav);border-top:1px solid var(--line);margin-top:50px;padding:40px 0 24px}
 .sitefoot-in{display:flex;justify-content:space-between;gap:30px;flex-wrap:wrap}
