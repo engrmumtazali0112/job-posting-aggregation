@@ -5,3 +5,6 @@ backend/uploads/
 
 backend/uploads/
 .env
+
+# editor settings
+.vscode/
