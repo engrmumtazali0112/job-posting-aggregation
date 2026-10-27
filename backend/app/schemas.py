@@ -58,6 +58,7 @@ class JobIn(BaseModel):
     description: str = Field(min_length=20)
     apply_url: str | None = Field(default=None, max_length=500)
     questions: list[QuestionIn] | None = Field(default=None, max_length=10)   # None = leave the job's questions as they are
+    allow_whatsapp_apply: bool = True          # show the "Apply via WhatsApp" button (needs the company's WhatsApp number)
 
     @model_validator(mode="after")
     def check_pay(self):
@@ -85,8 +86,14 @@ class _JobBase(BaseModel):
     source_type: str
     company_id: int | None = None
     company_whatsapp: str | None = None        # the company's WhatsApp number (digits, with country code); read from Job.company_whatsapp
+    allow_whatsapp_apply: bool = True          # employer's per-job switch for the WhatsApp button
     created_at: datetime
     model_config = {"from_attributes": True}
+
+    @field_validator("allow_whatsapp_apply", mode="before")
+    @classmethod
+    def whatsapp_default(cls, v):
+        return True if v is None else v        # rows created before the column existed
 
     @field_validator("questions", mode="before", check_fields=False)     # `questions` lives on the subclasses
     @classmethod
