@@ -260,3 +260,19 @@ def write_settings(data: SettingsIn, db: Session = Depends(get_db)):
 @router.post("/ingest/run")
 def ingest_now(db: Session = Depends(get_db)):
     return run_all(db)
+
+class GrokIngestIn(BaseModel):
+    text: str = Field(min_length=20, max_length=20000)       # pasted LinkedIn post / WhatsApp message / flyer text
+    publish: bool = True                                    # False = save as "pending" so you can review it first
+
+@router.post("/ingest/grok", response_model=dict)
+def ingest_grok(data: GrokIngestIn, db: Session = Depends(get_db)):
+    """Parse raw job text with Grok (xAI) and save it as a job."""
+    from .grok_jobs import parse_job_text, save_parsed_job, GrokError
+    try:
+        parsed = parse_job_text(data.text)
+    except GrokError as exc:
+        raise HTTPException(exc.status, str(exc))
+    job, created = save_parsed_job(db, parsed, publish=data.publish)
+    return {"created": created, "duplicate": not created, "parsed": parsed.model_dump(),
+            "job": JobFull.model_validate(job).model_dump(mode="json")}
