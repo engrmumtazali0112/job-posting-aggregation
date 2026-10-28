@@ -72,6 +72,11 @@ class Job(Base):
     questions: Mapped[list | None] = mapped_column(JSON)      # screening questions: [{id, text, type, required, options, ideal}]
     allow_whatsapp_apply: Mapped[bool] = mapped_column(Boolean, default=True)   # employer opt-in: show the "Apply via WhatsApp" button on this job
     contact_phone: Mapped[str | None] = mapped_column(String(20))   # digits only, with country code; found in the job text by the AI parser. Preferred over the company number for the WhatsApp button
+<<<<<<< HEAD
+=======
+    
+    
+>>>>>>> temp-fix
     dedupe_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=now, onupdate=now)
@@ -130,6 +135,19 @@ class SalaryReport(Base):
     base_salary: Mapped[int] = mapped_column(Integer)
     currency: Mapped[str] = mapped_column(String(5), default="PKR")
     period: Mapped[str] = mapped_column(String(10), default="month")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+# --- Blind Salary Insights: anonymous, Glassdoor-style salary submissions (no user_id is stored, on purpose) ---
+# Separate from SalaryReport above (that one is per-company and keyed by company_id). Amounts are monthly, in PKR.
+class BlindSalaryReport(Base):
+    __tablename__ = "blind_salary_reports"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_title: Mapped[str] = mapped_column(String(150), index=True)
+    city: Mapped[str] = mapped_column(String(100), index=True)
+    salary_min: Mapped[int] = mapped_column(Integer)
+    salary_max: Mapped[int] = mapped_column(Integer)
+    years_experience: Mapped[int] = mapped_column(Integer, default=0)
+    company_domain: Mapped[str] = mapped_column(String(253), index=True)     # normalised, e.g. "acme.com"
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
 # --- seeker profile, notifications, messages ---
