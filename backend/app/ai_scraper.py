@@ -49,9 +49,13 @@ def _apply_link(j: dict) -> str | None:
 
 
 def _location_ok(j: dict) -> bool:
-    """Himalayas jobs are remote. Keep worldwide ones (no restriction list) and ones that allow Pakistan; skip US-only, EU-only, etc."""
+    """Strict: keep a Himalayas job only if it is open worldwide (no restriction list, or a 'Worldwide'/'Anywhere' entry) or its
+    restriction list includes Pakistan. US-only, EU-only, UK-only etc. return False."""
     allowed = j.get("locationRestrictions") or []
-    return not allowed or any("pakistan" in str(x).lower() for x in allowed)
+    if not allowed:
+        return True                                   # Himalayas leaves the list empty for worldwide jobs
+    names = [str(x).strip().lower() for x in allowed]
+    return any(n in ("worldwide", "anywhere", "global", "remote") or "pakistan" in n for n in names)
 
 def to_raw_text(j: dict) -> str:
     """Flatten one Himalayas record into plain text, the same kind of text an admin would paste into the AI parser."""
