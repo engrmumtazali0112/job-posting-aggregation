@@ -57,10 +57,9 @@ def fetch_rss(url):
             "apply_url": e.get("link"),
         }
 
-# Pakistani cities + remote only. Always pass a Pakistani location: when Jooble cannot place a location it can fall back to
-# the server's own region (the Render server is in the USA), which is how US jobs got in.
-JOOBLE_QUERIES = [("", "Pakistan"), ("", "Islamabad"), ("", "Rawalpindi"),
-                  ("", "Lahore"), ("", "Karachi"), ("developer", "Pakistan"), ("remote", "Pakistan")]
+# Pakistani cities only (remote jobs come from the RSS/API sources). Always pass a Pakistani location: when Jooble cannot place a
+# location it can fall back to the server's own region (the Render server is in the USA), which is how US jobs got in.
+JOOBLE_QUERIES = [("developer", "Pakistan"), ("developer", "Islamabad"), ("developer", "Lahore"), ("developer", "Karachi"), ("", "Pakistan")]
 
 def fetch_jooble(_endpoint):
     if not settings.jooble_api_key:
