@@ -2,6 +2,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import select
+from . import ai_scraper
 from .config import settings
 from .database import SessionLocal
 from .emailer import send_email
@@ -15,6 +16,15 @@ MAX_JOBS_PER_EMAIL = 10
 def ingest_job():
     with SessionLocal() as db:
         print("[ingest]", run_all(db))
+
+
+def ai_scrape_job():
+    """Every 2 hours: fetch new jobs from Himalayas and let the OpenRouter parser structure them (incl. contact_phone)."""
+    try:
+        with SessionLocal() as db:
+            print("[ai-scraper]", ai_scraper.run(db))
+    except Exception as exc:                                         # never let a failed run stop the scheduler
+        print("[ai-scraper] failed:", repr(exc))
 
 
 # ---------- job alerts ----------
@@ -115,5 +125,7 @@ def start():
     if os.getenv("RUN_SCHEDULER", "true").lower() != "false":
         sched.add_job(ingest_job, "interval", minutes=30, next_run_time=datetime.now())
         sched.add_job(alerts_job, "cron", minute=5, id="job_alerts", max_instances=1, coalesce=True)   # every hour, at :05
+        # AI scraper: no run at startup on purpose (a restart should not burn free OpenRouter quota); first run is 2 hours after start, then every 2 hours
+        sched.add_job(ai_scrape_job, "interval", hours=2, id="ai_scraper", max_instances=1, coalesce=True)
     sched.start()
     return sched
