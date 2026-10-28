@@ -1,0 +1,40 @@
+/* Salary Insights page. Uses the theme variables from index.css (--p, --mut, --line, --tint, --ok, --bad). */
+.si{max-width:860px}
+.si-intro{margin:-8px 0 22px;font-size:16px}
+.si-search{display:flex;gap:10px;padding:12px;flex-wrap:wrap}
+.si-search input{flex:1;min-width:180px}
+.si input{border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;font:500 15px Inter,sans-serif;background:var(--field);color:var(--ink);outline:0}
+.si input:focus{border-color:var(--p)}
+.si-err{color:var(--bad);font-weight:600;margin-top:10px}
+.si-ok{color:var(--ok);font-weight:600}
+.si-sub{font-size:24px;letter-spacing:-.4px;margin:40px 0 14px}
+.si-h{font-size:16px;margin:26px 0 10px}
+
+.si-card{padding:24px;margin-top:18px}
+.si-empty{margin-top:18px;padding:22px;text-align:center}
+.si-stats{display:flex;gap:48px;flex-wrap:wrap}
+.si-big{font-size:32px;font-weight:800;letter-spacing:-.6px;color:var(--p)}
+.si-note{margin-top:10px;font-size:14px}
+
+/* CSS bar chart */
+.si-row{display:grid;grid-template-columns:90px 1fr 190px;align-items:center;gap:12px;margin:8px 0;font-size:14px}
+.si-label{color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.si-val{text-align:right;font-weight:600;white-space:nowrap}
+.si-track{position:relative;height:16px;border-radius:99px;background:var(--tint);overflow:hidden}
+.si-bar{height:100%;border-radius:99px;transition:width .4s ease}
+.si-low{background:#8fb4ff}
+.si-avg{background:var(--p)}
+.si-high{background:#16306b}
+.si-range{position:absolute;top:0;background:var(--p);opacity:.75}
+
+/* submit form */
+.si-form{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:24px}
+.si-form label{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:14px}
+.si-actions{grid-column:1/-1;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+
+@media (max-width:640px){
+  .si-form{grid-template-columns:1fr}
+  .si-row{grid-template-columns:70px 1fr}
+  .si-val{grid-column:1/-1;text-align:left;margin-bottom:6px}
+  .si-stats{gap:24px}
+}

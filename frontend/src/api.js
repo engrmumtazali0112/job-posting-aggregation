@@ -16,7 +16,7 @@ async function request(path, { method = 'GET', body, form } = {}) {
   if (form) { payload = new URLSearchParams(form); headers['Content-Type'] = 'application/x-www-form-urlencoded' }
   else if (body !== undefined) { payload = JSON.stringify(body); headers['Content-Type'] = 'application/json' }
   let res
-  try { res = await fetch(API + path, { method, headers, body: payload }) }
+  try { res = await fetch(API + path, { method, headers, body: payload, cache: 'no-store' }) }   // never serve an API answer from the browser cache (mobile browsers can keep stale/empty ones)
   catch { throw new Error('Cannot reach the server. Please try again.') }
   if (!res.ok) {
     const DEFAULT = 'Something went wrong'
