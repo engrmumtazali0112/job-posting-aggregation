@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""                # e.g. @mychannel or -100123...
     telegram_share_aggregated: bool = False   # employer jobs are always shared
+    # LinkedIn company-page auto-poster (linkedin_poster.py). Empty token or URN = feature off. See .env.example for how to get them.
+    linkedin_access_token: str = ""           # OAuth token with the w_organization_social scope; LinkedIn tokens expire (about 60 days)
+    linkedin_org_urn: str = ""                # urn:li:organization:123456789 (a bare number is accepted too)
+    linkedin_api_version: str = "202606"      # sent as the Linkedin-Version header (YYYYMM). LinkedIn retires old versions after about a year
     # Address of the FRONTEND, used for the links in verification / password-reset / job-alert emails and Telegram posts.
     # Local: http://localhost:5173   Production: https://job-board-frontend-opal.vercel.app   (a trailing / is removed)
     site_url: str = "http://localhost:5173"
@@ -41,7 +45,8 @@ class Settings(BaseSettings):
     # utf-8-sig also copes with a .env that was saved with a byte-order mark. Real OS environment variables (Render) still win.
     model_config = {"env_file": (str(BACKEND_DIR / ".env"), ".env"), "env_file_encoding": "utf-8-sig", "extra": "ignore"}
 
-    @field_validator("smtp_host", "smtp_user", "smtp_password", "smtp_from_email", "site_url", "openrouter_api_key", mode="before")
+    @field_validator("smtp_host", "smtp_user", "smtp_password", "smtp_from_email", "site_url", "openrouter_api_key",
+                     "linkedin_access_token", "linkedin_org_urn", "linkedin_api_version", mode="before")
     @classmethod
     def _clean(cls, v):
         if isinstance(v, str):                # stray spaces or quotes pasted around a value would break login / links
