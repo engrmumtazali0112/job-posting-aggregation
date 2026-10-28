@@ -10,6 +10,7 @@ import Jobs from './pages/Jobs.jsx'
 import JobDetail from './pages/JobDetail.jsx'
 import Company from './pages/Company.jsx'
 import CompanySearch from './pages/CompanySearch.jsx'
+import SalaryInsights from './pages/SalaryInsights.jsx'
 import { Login, Register, VerifyEmail } from './pages/Auth.jsx'
 import ForgotPassword from './pages/ForgotPassword.jsx'
 import ResetPassword from './pages/ResetPassword.jsx'
@@ -54,6 +55,7 @@ function Navbar() {
         <Link to="/" className="logo-link" aria-label="JobBoard home"><Logo /></Link>
         <NavLink to="/" end className="tl">Home</NavLink>
         <NavLink to="/companies" className="tl">Company reviews</NavLink>
+        <NavLink to="/salary-insights" className="tl">Salary Insights</NavLink>
         <div className="nav-spacer" />
         {user ? (
           <>
@@ -178,6 +180,7 @@ export default function App() {
           <Route path="/jobs/:id/apply" element={<Protected role="job_seeker"><Apply /></Protected>} />
           <Route path="/companies" element={<CompanySearch />} />
           <Route path="/companies/:id" element={<Company />} />
+          <Route path="/salary-insights" element={<SalaryInsights />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/verify-email/:token" element={<VerifyEmail />} />

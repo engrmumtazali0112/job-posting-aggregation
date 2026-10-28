@@ -47,6 +47,12 @@ def _apply_link(j: dict) -> str | None:
     return link.strip()[:500] if isinstance(link, str) and link.strip().lower().startswith(("http://", "https://")) else None
 
 
+def _location_ok(j: dict) -> bool:
+    """Himalayas jobs are remote. Keep worldwide ones (no restriction list) and ones that allow Pakistan; skip US-only, EU-only, etc."""
+    allowed = j.get("locationRestrictions") or []
+    return not allowed or any("pakistan" in str(x).lower() for x in allowed)
+
+
 def to_raw_text(j: dict) -> str:
     """Flatten one Himalayas record into plain text, the same kind of text an admin would paste into the AI parser."""
     locations = j.get("locationRestrictions") or []
@@ -74,7 +80,7 @@ def run(db: Session, max_new: int = MAX_NEW_PER_RUN) -> dict:
     """Fetch -> skip jobs we already have -> AI-parse the new ones -> save. Returns a small report dict."""
     if not settings.openrouter_api_key:
         return {"error": "OPENROUTER_API_KEY is not set"}
-    report = {"fetched": 0, "added": 0, "duplicates": 0, "failed": 0, "stopped": None}
+    report = {"fetched": 0, "added": 0, "duplicates": 0, "failed": 0, "filtered_out": 0, "stopped": None}
     handled = 0
     for page in range(MAX_PAGES):
         try:
@@ -92,6 +98,9 @@ def run(db: Session, max_new: int = MAX_NEW_PER_RUN) -> dict:
                 report["stopped"] = report["stopped"] or "reached the per-run limit"
                 return report
             if not link or not j.get("title"):
+                continue
+            if not _location_ok(j):
+                report["filtered_out"] += 1
                 continue
             if link in known:
                 report["duplicates"] += 1
