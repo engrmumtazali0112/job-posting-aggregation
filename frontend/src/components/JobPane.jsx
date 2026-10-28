@@ -51,6 +51,8 @@ export default function JobPane({ job, full = false, saved, applied, onSave, onA
   const seeker = user?.role === 'job_seeker'
   const hasQuestions = (job.questions?.length || 0) > 0     // screening questions: the quick form cannot answer them, so send people to the full apply page
   const pay = payText(job)
+  // WhatsApp: prefer the number the AI found in the job text, otherwise the company's own number (digits only, with country code, as wa.me needs)
+  const waNumber = String(job.contact_phone || job.company_whatsapp || '').replace(/\D/g, '')
 
   const openApply = async () => {
     setShow(!show)
@@ -87,9 +89,9 @@ export default function JobPane({ job, full = false, saved, applied, onSave, onA
         {emp && !user && <Link className="btn btn-primary" to="/login">Log in to apply</Link>}
         {emp && user && !seeker && <span className="muted">Sign in as a job seeker to apply.</span>}
         {job.apply_url && <a className={'btn ' + (emp ? 'btn-outline' : 'btn-primary')} href={job.apply_url} target="_blank" rel="noopener noreferrer">{emp ? 'Company website' : 'Apply now'} <Icon name="external" size={15} /></a>}
-        {emp && job.allow_whatsapp_apply !== false && job.company_whatsapp && (
+        {job.allow_whatsapp_apply !== false && waNumber && (
           <a className="btn btn-whatsapp" target="_blank" rel="noopener noreferrer"
-            href={`https://wa.me/${job.company_whatsapp}?text=${encodeURIComponent(`Hi, I am interested in the ${job.title} role on JobBoard.`)}`}>
+            href={`https://wa.me/${waNumber}?text=${encodeURIComponent(`Hi, I am interested in the ${job.title} role on JobBoard.`)}`}>
             <WhatsAppIcon /> Apply via WhatsApp
           </a>)}
         {canSave && <button className={'sqbtn' + (saved ? ' on' : '')} onClick={() => onSave?.(job)} title={saved ? 'Saved' : 'Save job'}><Icon name="bookmark" fill={saved} /></button>}

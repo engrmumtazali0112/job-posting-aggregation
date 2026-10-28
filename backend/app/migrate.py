@@ -1,7 +1,35 @@
 import sys
+import time
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import OperationalError as SAOperationalError
 from .database import Base, engine
 from . import models  # noqa: F401
+
+try:
+    from psycopg import OperationalError as PgOperationalError
+except ImportError:                       # psycopg is only needed for PostgreSQL / Neon
+    class PgOperationalError(Exception):
+        pass
+
+SLEEPING_MSG = "Database is sleeping. Please wake it up in the Neon console and try again."
+
+
+def wait_for_database(attempts: int = 4, pause: int = 5) -> None:
+    """Open one connection before the migration starts. A sleeping Neon database refuses the first attempt(s) while it wakes up,
+    so retry a few times (each attempt waits up to connect_timeout seconds, see database.py). Gives up with a friendly message."""
+    for i in range(1, attempts + 1):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            print("Connected.")
+            return
+        except (PgOperationalError, SAOperationalError) as exc:      # SQLAlchemy wraps the driver error in its own OperationalError
+            print(f"Connection attempt {i}/{attempts} failed: {type(exc).__name__}")
+            if i < attempts:
+                print(f"Waiting {pause}s for the database to wake up...")
+                time.sleep(pause)
+    print(SLEEPING_MSG)
+    sys.exit(1)
 
 def literal(v, dialect):
     if isinstance(v, bool):
@@ -74,6 +102,8 @@ def add_missing_columns():
 
 
 def run(dry=False):
+    print("Connecting to database...")
+    wait_for_database()
     dialect = engine.dialect.name
     todo = missing_column_ddl(verbose=True)
     for ddl in todo:
@@ -110,4 +140,8 @@ def backfill_companies():
         print("Linked", len(jobs), "job(s) to company pages.")
 
 if __name__ == "__main__":
-    run(dry="--dry-run" in sys.argv)
+    try:
+        run(dry="--dry-run" in sys.argv)
+    except KeyboardInterrupt:
+        print("\nStopped. If the database was still waking up, wait a few seconds and run the command again.")
+        sys.exit(1)
