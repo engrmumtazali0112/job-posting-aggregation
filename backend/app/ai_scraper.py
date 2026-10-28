@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .config import settings
-from .ingest import clean_desc
+from .ingest import clean_desc, verify_job_authenticity
 from .models import Job
 from .openrouter_jobs import AIParseError, parse_job_text, save_parsed_job
 
@@ -84,7 +84,7 @@ def run(db: Session, max_new: int = MAX_NEW_PER_RUN) -> dict:
     """Fetch -> skip jobs we already have -> AI-parse the new ones -> save. Returns a small report dict."""
     if not settings.openrouter_api_key:
         return {"error": "OPENROUTER_API_KEY is not set"}
-    report = {"fetched": 0, "added": 0, "duplicates": 0, "failed": 0, "filtered_out": 0, "stopped": None}
+    report = {"fetched": 0, "added": 0, "duplicates": 0, "failed": 0, "filtered_out": 0, "rejected_unverified": 0, "stopped": None}
     handled = 0
     for page in range(MAX_PAGES):
         try:
@@ -105,6 +105,10 @@ def run(db: Session, max_new: int = MAX_NEW_PER_RUN) -> dict:
                 continue
             if not _location_ok(j):
                 report["filtered_out"] += 1
+                continue
+            ok, _why = verify_job_authenticity({"title": j.get("title"), "company": j.get("companyName"), "apply_url": link})
+            if not ok:                                              # checked BEFORE the AI call, so rejected jobs cost no OpenRouter quota
+                report["rejected_unverified"] += 1
                 continue
             if link in known:
                 report["duplicates"] += 1

@@ -1,4 +1,5 @@
-import re, html
+import re, html, ipaddress
+from urllib.parse import urlparse
 import httpx, feedparser
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -30,6 +31,83 @@ PK_PLACES = ("pakistan", "islamabad", "rawalpindi", "lahore", "karachi", "peshaw
 def is_pk_or_remote(location) -> bool:
     loc = (location or "").lower()
     return "remote" in loc or any(p in loc for p in PK_PLACES)
+
+# ---------- authenticity check ----------
+# This is a heuristic, not proof: it removes obviously dodgy listings (no link, link shorteners, junk domains, a company name that has
+# nothing to do with the site it links to). It cannot know whether a company really exists or really is hiring.
+SHORTENERS = {"bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "is.gd", "v.gd", "buff.ly", "rebrand.ly", "cutt.ly", "shorturl.at",
+              "tiny.cc", "lnkd.in", "rb.gy", "t.ly", "s.id", "bl.ink", "short.io", "soo.gd", "clck.ru", "adf.ly", "shorte.st", "fb.me", "wa.me"}
+# Official job platforms / applicant-tracking systems / the aggregators this project pulls from. A link on one of these is accepted
+# without a company-name match, because the job lives on the platform, not on the employer's own site.
+TRUSTED_APPLY_HOSTS = {"jooble.org", "himalayas.app", "weworkremotely.com", "arbeitnow.com", "linkedin.com", "indeed.com", "glassdoor.com",
+                       "rozee.pk", "mustakbil.com", "greenhouse.io", "lever.co", "workable.com", "ashbyhq.com", "smartrecruiters.com",
+                       "myworkdayjobs.com", "bamboohr.com", "recruitee.com", "breezy.hr", "teamtailor.com", "jobvite.com"}
+LEGAL_WORDS = {"pvt", "private", "ltd", "limited", "inc", "incorporated", "llc", "llp", "co", "corp", "corporation", "company", "plc",
+               "gmbh", "the", "and", "of", "group", "holdings", "smc"}
+SECOND_LEVEL = {"co", "com", "org", "net", "gov", "edu", "ac"}      # company.com.pk, company.co.uk
+TLD_RE = re.compile(r"^[a-z]{2,24}$")
+
+def _host(url):
+    """Lower-case host of an http(s) URL without a leading www., or None if the URL is not a usable web link."""
+    try:
+        p = urlparse((url or "").strip())
+        host = p.hostname
+    except ValueError:
+        return None
+    if p.scheme not in ("http", "https") or not host:
+        return None
+    host = host.lower().rstrip(".")
+    return host[4:] if host.startswith("www.") else host
+
+def _host_in(host, domains) -> bool:
+    return any(host == d or host.endswith("." + d) for d in domains)
+
+def _site_label(host) -> str:
+    """The name part of a domain: 'careers.axonforge.com' -> 'axonforge', 'systemsltd.com.pk' -> 'systemsltd'."""
+    parts = host.split(".")
+    if len(parts) >= 3 and parts[-2] in SECOND_LEVEL and len(parts[-1]) == 2:
+        return parts[-3]
+    return parts[-2] if len(parts) >= 2 else ""
+
+def company_matches_domain(company, host) -> bool:
+    words = [w for w in re.findall(r"[a-z0-9]+", (company or "").lower()) if w not in LEGAL_WORDS]
+    label = re.sub(r"[^a-z0-9]", "", _site_label(host))
+    if not words or not label:
+        return False
+    joined = "".join(words)
+    if len(label) < 3:                                  # short domains are usually acronyms: ke.com.pk for K-Electric
+        return joined.startswith(label)
+    return label in joined or any(len(w) >= 3 and w in label for w in words)
+
+def verify_job_authenticity(job_data: dict) -> tuple[bool, str]:
+    """Returns (True, "ok") or (False, reason). job_data needs: title, company, apply_url (location is not used yet).
+    Rejects a job when: it has no title; it has no apply link; the link is not a real web address (bad scheme, IP address, localhost, no
+    valid domain ending); the link goes through a URL shortener; or the link is on an unknown site whose name does not match the company."""
+    if not (job_data.get("title") or "").strip():
+        return False, "no title"
+    url = (job_data.get("apply_url") or "").strip()
+    if not url:
+        return False, "no apply link"
+    host = _host(url)
+    if not host:
+        return False, "apply link is not a valid http(s) address"
+    try:
+        ipaddress.ip_address(host)
+        return False, "apply link is a raw IP address"
+    except ValueError:
+        pass
+    if "." not in host or not TLD_RE.match(host.rsplit(".", 1)[1]):
+        return False, "apply link has no real domain"
+    if _host_in(host, SHORTENERS):
+        return False, "apply link is a link shortener"
+    if _host_in(host, TRUSTED_APPLY_HOSTS):
+        return True, "ok"
+    company = (job_data.get("company") or "").strip()
+    if not company or company.lower() == "unknown":
+        return False, "company is unknown and the link is not on a recognised job platform"
+    if not company_matches_domain(company, host):
+        return False, f"company name does not match the apply domain ({host})"
+    return True, "ok"
 
 def fetch_api(url):
     r = httpx.get(url, timeout=30, headers={"User-Agent": "JobBoardBot/1.0"})
@@ -94,9 +172,12 @@ def save_jobs(db: Session, src: JobSource, items) -> dict:
     filtered = fetched - len(items)
     existing = set(db.scalars(select(Job.dedupe_hash)))
     new, skipped = [], 0
+    rejected: dict = {}                      # reason -> count, for the run report
     companies: dict = {}
     for it in items:
-        if not it["title"] or not it["apply_url"]:
+        ok, why = verify_job_authenticity(it)      # no apply link, shortened link, or company/domain mismatch -> never saved
+        if not ok:
+            rejected[why.split(" (")[0]] = rejected.get(why.split(" (")[0], 0) + 1
             continue
         h = make_hash(it["title"], it["company"], it["location"])
         if h in existing:
@@ -116,7 +197,7 @@ def save_jobs(db: Session, src: JobSource, items) -> dict:
             share_jobs(new[:5])        # cap per source so the channel is not flooded
     except Exception as exc:           # sharing must never break ingestion
         print("[telegram]", exc)
-    return {"added": len(new), "duplicates": skipped, "filtered_out": filtered}
+    return {"added": len(new), "duplicates": skipped, "filtered_out": filtered, "rejected_unverified": rejected}
 
 def expire_stale(db: Session) -> int:
     """Close aggregated jobs older than settings.stale_job_days."""

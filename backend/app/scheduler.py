@@ -1,12 +1,13 @@
 import os
 from datetime import datetime, timedelta, timezone
 from apscheduler.schedulers.background import BackgroundScheduler
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from . import ai_scraper
 from .config import settings
 from .database import SessionLocal
 from .emailer import send_email
 from .ingest import run_all
+from .linkedin_poster import LinkedInError, is_configured as linkedin_configured, post_job_to_linkedin
 from .models import Job, JobAlert, User
 
 MAX_BACKLOG = timedelta(hours=24)       # if the scheduler was down for a long time, never look back further than this
@@ -25,6 +26,43 @@ def ai_scrape_job():
             print("[ai-scraper]", ai_scraper.run(db))
     except Exception as exc:                                         # never let a failed run stop the scheduler
         print("[ai-scraper] failed:", repr(exc))
+
+
+# ---------- LinkedIn company page ----------
+LINKEDIN_PER_RUN = 3                      # successful posts per run (every 2 hours)
+LINKEDIN_CANDIDATES = 10                  # newest unposted jobs to try; a job that keeps failing cannot block the others
+LINKEDIN_MAX_AGE = timedelta(hours=72)    # only fresh jobs: turning this on must not post your whole back catalogue
+
+
+def linkedin_job():
+    """Every 2 hours: post the 3 newest published jobs that are not on LinkedIn yet to the company page, then mark them
+    posted_to_linkedin so they are never posted twice. Does nothing until LINKEDIN_ACCESS_TOKEN and LINKEDIN_ORG_URN are set."""
+    if not linkedin_configured():
+        return
+    try:
+        with SessionLocal() as db:
+            cutoff = _utcnow() - LINKEDIN_MAX_AGE
+            jobs = db.scalars(select(Job).where(Job.status == "published", or_(Job.posted_to_linkedin.is_(False), Job.posted_to_linkedin.is_(None)),
+                                                Job.created_at > cutoff)
+                              .order_by(Job.created_at.desc()).limit(LINKEDIN_CANDIDATES)).all()
+            posted = 0
+            for job in jobs:
+                if posted >= LINKEDIN_PER_RUN:
+                    break
+                try:
+                    urn = post_job_to_linkedin(job)
+                except LinkedInError as exc:
+                    print("[linkedin]", "STOPPED:" if exc.fatal else f"skipped job {job.id}:", exc)
+                    if exc.fatal:
+                        break
+                    continue
+                job.posted_to_linkedin = True
+                db.commit()                                          # commit per post, so a crash can never cause a repost
+                posted += 1
+                print(f"[linkedin] posted job {job.id} -> {urn}")
+            print(f"[linkedin] run finished: {posted} posted, {len(jobs)} candidate(s)")
+    except Exception as exc:                                         # never let a failed run stop the scheduler
+        print("[linkedin] failed:", repr(exc))
 
 
 # ---------- job alerts ----------
@@ -127,5 +165,7 @@ def start():
         sched.add_job(alerts_job, "cron", minute=5, id="job_alerts", max_instances=1, coalesce=True)   # every hour, at :05
         # AI scraper: no run at startup on purpose (a restart should not burn free OpenRouter quota); first run is 2 hours after start, then every 2 hours
         sched.add_job(ai_scrape_job, "interval", hours=2, id="ai_scraper", max_instances=1, coalesce=True)
+        # LinkedIn auto-post: first run 2 hours after start (not at startup), then every 2 hours. No-op until the LINKEDIN_* settings exist.
+        sched.add_job(linkedin_job, "interval", hours=2, id="linkedin_poster", max_instances=1, coalesce=True)
     sched.start()
     return sched
