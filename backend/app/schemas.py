@@ -87,6 +87,7 @@ class _JobBase(BaseModel):
     company_id: int | None = None
     company_whatsapp: str | None = None        # the company's WhatsApp number (digits, with country code); read from Job.company_whatsapp
     allow_whatsapp_apply: bool = True          # employer's per-job switch for the WhatsApp button
+    contact_phone: str | None = None           # phone / WhatsApp number found in the job text (digits, with country code)
     created_at: datetime
     model_config = {"from_attributes": True}
 

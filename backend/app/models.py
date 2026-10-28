@@ -71,6 +71,7 @@ class Job(Base):
     status: Mapped[str] = mapped_column(String(20), default="published")
     questions: Mapped[list | None] = mapped_column(JSON)      # screening questions: [{id, text, type, required, options, ideal}]
     allow_whatsapp_apply: Mapped[bool] = mapped_column(Boolean, default=True)   # employer opt-in: show the "Apply via WhatsApp" button on this job
+    contact_phone: Mapped[str | None] = mapped_column(String(20))   # digits only, with country code; found in the job text by the AI parser. Preferred over the company number for the WhatsApp button
     dedupe_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime, default=now, onupdate=now)

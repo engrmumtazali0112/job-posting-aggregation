@@ -39,10 +39,24 @@ Reply with ONLY a JSON object (no markdown, no explanation) with exactly these k
   "salary_period": "hour" | "day" | "week" | "month" | "year",
   "currency": string,                   // ISO code, e.g. "PKR"; use "PKR" when the text says Rs / rupees
   "description": string,                // clean description: responsibilities, requirements, benefits
-  "apply_url": string | null            // a full http(s) link to apply; null if none. Never invent one.
+  "apply_url": string | null,           // a full http(s) link to apply; null if none. Never invent one.
+  "contact_phone": string | null        // a phone / WhatsApp number written in the text, e.g. "+92 300 1234567" or "0300-1234567"; null if none. Never invent one.
 }
 Rules: never invent facts. If something is not in the text use null (or the default for enum fields:
 in_person, full_time, month). If the text is not a job posting, reply {"title": ""}."""
+
+
+def normalize_phone(v) -> str | None:
+    """Digits only, international format, as wa.me needs: '+92 300 1234567' / '0300-1234567' / '0092 300 1234567' -> '923001234567'.
+    Anything that does not look like a phone number returns None."""
+    if v is None:
+        return None
+    d = re.sub(r"\D", "", str(v))
+    if d.startswith("00"):
+        d = d[2:]
+    elif d.startswith("0") and len(d) == 11:        # local Pakistani mobile format
+        d = "92" + d[1:]
+    return d if 10 <= len(d) <= 15 else None
 
 
 class ParsedJob(BaseModel):
@@ -57,6 +71,12 @@ class ParsedJob(BaseModel):
     currency: str = "PKR"
     description: str = ""
     apply_url: str | None = None
+    contact_phone: str | None = None
+
+    @field_validator("contact_phone", mode="before")
+    @classmethod
+    def _phone(cls, v):
+        return normalize_phone(v)
 
     @field_validator("title", "company", "location", "description", mode="before")
     @classmethod
@@ -188,14 +208,19 @@ def parse_job_text(raw_text: str) -> ParsedJob:
         raise AIParseError("No job posting was found in that text.", status=422)
     if job.salary_min is not None and job.salary_max is not None and job.salary_min > job.salary_max:
         job.salary_min, job.salary_max = job.salary_max, job.salary_min
+    if job.contact_phone and job.contact_phone[-10:] not in re.sub(r"\D", "", raw_text):
+        print("[ai-parse] dropped a phone number that is not in the text (model invented it)")
+        job.contact_phone = None                           # only keep numbers that really appear in the pasted text
     return job
 
 
-def save_parsed_job(db: Session, parsed: ParsedJob, publish: bool = True) -> tuple[Job | None, bool]:
-    """Save the job. Returns (job, created). If the same title+company+location already exists, returns (existing, False)."""
-    src = db.scalar(select(JobSource).where(JobSource.name == AI_SOURCE["name"]))
+def save_parsed_job(db: Session, parsed: ParsedJob, publish: bool = True, source: dict | None = None) -> tuple[Job | None, bool]:
+    """Save the job. Returns (job, created). If the same title+company+location already exists, returns (existing, False).
+    `source` is a JobSource config dict ({name, type, endpoint}); default is the "AI Parser" source."""
+    source = source or AI_SOURCE
+    src = db.scalar(select(JobSource).where(JobSource.name == source["name"]))
     if not src:
-        src = JobSource(**AI_SOURCE)
+        src = JobSource(**source)
         db.add(src)
         db.flush()
     company = (parsed.company or "").strip()[:200] or "Unknown"
@@ -208,7 +233,7 @@ def save_parsed_job(db: Session, parsed: ParsedJob, publish: bool = True) -> tup
     job = Job(title=parsed.title[:255], company_name=company, company_id=comp.id if comp else None, location=location,
               workplace_type=parsed.workplace_type, job_type=parsed.job_type, salary_min=parsed.salary_min,
               salary_max=parsed.salary_max, salary_period=parsed.salary_period, currency=parsed.currency,
-              description=parsed.description[:20000], apply_url=parsed.apply_url, source_type="aggregated",
+              description=parsed.description[:20000], apply_url=parsed.apply_url, contact_phone=parsed.contact_phone, source_type="aggregated",
               source_id=src.id, status="published" if publish else "pending", dedupe_hash=h)
     db.add(job)
     db.commit()
