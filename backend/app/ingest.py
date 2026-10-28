@@ -22,6 +22,15 @@ def clean(text):
 def clean_desc(text):
     return REPEAT.sub("", clean(text)).strip()
 
+# Only Pakistani jobs and remote jobs are kept. Jooble returns bare city names ("Lahore"), so the check also accepts the main cities.
+# ("Hyderabad" and "Punjab" are left out on purpose: they are just as common in India.)
+PK_PLACES = ("pakistan", "islamabad", "rawalpindi", "lahore", "karachi", "peshawar", "quetta",
+             "faisalabad", "multan", "sialkot", "gujranwala")
+
+def is_pk_or_remote(location) -> bool:
+    loc = (location or "").lower()
+    return "remote" in loc or any(p in loc for p in PK_PLACES)
+
 def fetch_api(url):
     r = httpx.get(url, timeout=30, headers={"User-Agent": "JobBoardBot/1.0"})
     r.raise_for_status()
@@ -29,7 +38,7 @@ def fetch_api(url):
         yield {
             "title": j.get("title") or "",
             "company": j.get("company_name") or "Unknown",
-            "location": j.get("location") or "Remote",
+            "location": "Remote" if j.get("remote") else (j.get("location") or "Remote"),   # Arbeitnow lists German cities; only its remote jobs survive the filter
             "description": clean_desc(j.get("description"))[:5000],
             "apply_url": j.get("url"),
         }
@@ -48,8 +57,10 @@ def fetch_rss(url):
             "apply_url": e.get("link"),
         }
 
+# Pakistani cities + remote only. Always pass a Pakistani location: when Jooble cannot place a location it can fall back to
+# the server's own region (the Render server is in the USA), which is how US jobs got in.
 JOOBLE_QUERIES = [("", "Pakistan"), ("", "Islamabad"), ("", "Rawalpindi"),
-                  ("", "Lahore"), ("", "Karachi"), ("developer", "Pakistan")]
+                  ("", "Lahore"), ("", "Karachi"), ("developer", "Pakistan"), ("remote", "Pakistan")]
 
 def fetch_jooble(_endpoint):
     if not settings.jooble_api_key:
@@ -79,6 +90,9 @@ def get_source(db: Session, cfg: dict) -> JobSource:
 
 def save_jobs(db: Session, src: JobSource, items) -> dict:
     items = list(items)                      # fetch first, so no DB connection sits idle
+    fetched = len(items)
+    items = [it for it in items if is_pk_or_remote(it.get("location"))]   # drop US / other-country jobs before they reach the database
+    filtered = fetched - len(items)
     existing = set(db.scalars(select(Job.dedupe_hash)))
     new, skipped = [], 0
     companies: dict = {}
@@ -103,7 +117,7 @@ def save_jobs(db: Session, src: JobSource, items) -> dict:
             share_jobs(new[:5])        # cap per source so the channel is not flooded
     except Exception as exc:           # sharing must never break ingestion
         print("[telegram]", exc)
-    return {"added": len(new), "duplicates": skipped}
+    return {"added": len(new), "duplicates": skipped, "filtered_out": filtered}
 
 def expire_stale(db: Session) -> int:
     """Close aggregated jobs older than settings.stale_job_days."""

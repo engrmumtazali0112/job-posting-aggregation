@@ -12,7 +12,7 @@ from .models import Job
 from .schemas import JobPublic
 from . import storage
 from . import (routes_auth, routes_google_auth, routes_employer, routes_admin, routes_seeker, routes_company,
-               routes_notifications, routes_messages, routes_home, scheduler)
+               routes_notifications, routes_messages, routes_home, routes_salary, scheduler)
 
 Base.metadata.create_all(bind=engine)
 try:                                    # add columns that new code needs but an older database lacks
@@ -58,6 +58,7 @@ app.include_router(routes_seeker.router)
 app.include_router(routes_company.router)
 app.include_router(routes_home.router)
 app.include_router(routes_home.admin_router)
+app.include_router(routes_salary.router)
 
 @app.get("/api/health")
 def health():

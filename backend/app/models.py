@@ -134,6 +134,19 @@ class SalaryReport(Base):
     period: Mapped[str] = mapped_column(String(10), default="month")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
 
+# --- Blind Salary Insights: anonymous, Glassdoor-style salary submissions (no user_id is stored, on purpose) ---
+# Separate from SalaryReport above (that one is per-company and keyed by company_id). Amounts are monthly, in PKR.
+class BlindSalaryReport(Base):
+    __tablename__ = "blind_salary_reports"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_title: Mapped[str] = mapped_column(String(150), index=True)
+    city: Mapped[str] = mapped_column(String(100), index=True)
+    salary_min: Mapped[int] = mapped_column(Integer)
+    salary_max: Mapped[int] = mapped_column(Integer)
+    years_experience: Mapped[int] = mapped_column(Integer, default=0)
+    company_domain: Mapped[str] = mapped_column(String(253), index=True)     # normalised, e.g. "acme.com"
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
 # --- seeker profile, notifications, messages ---
 class SeekerProfile(Base):
     __tablename__ = "seeker_profiles"
