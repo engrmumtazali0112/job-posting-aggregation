@@ -34,6 +34,20 @@ class Settings(BaseSettings):
     smtp_password: str = ""                   # for Gmail a 16-character App Password, NOT your normal password
     smtp_from_email: str = ""                 # the From address; empty = same as smtp_user (Gmail always sends from the logged-in account)
     smtp_from_name: str = "JobBoard"          # the name recipients see
+    # --- AI article generation (Groq) ---
+    groq_api_key: str = ""                    # https://console.groq.com/keys ; empty = no articles are generated
+    groq_model: str = "llama-3.3-70b-versatile"   # llama3-70b-8192 was retired by Groq; any chat model id from console.groq.com/docs/models works
+    ai_articles_per_run: int = 15             # most Groq calls per ingest run (free tier is rate limited); the rest are picked up by the next run
+    ai_article_pause: float = 2.0             # seconds between Groq calls
+    ingest_interval_minutes: int = 1440       # how often the scheduler fetches jobs: 1440 = daily (it also runs once at startup)
+    # --- social auto-sharing (all optional: a platform with no credentials is skipped) ---
+    social_max_per_run: int = 5               # most new jobs shared per run, so the accounts are not flooded
+    social_dry_run: bool = False              # true = log the posts instead of sending them
+    linkedin_access_token: str = ""           # OAuth token with the w_member_social (or w_organization_social) scope
+    linkedin_author_urn: str = ""             # urn:li:person:XXXX or urn:li:organization:XXXX
+    twitter_access_token: str = ""            # OAuth 2.0 user-context token with tweet.write
+    facebook_page_id: str = ""
+    facebook_page_token: str = ""             # Page access token with pages_manage_posts
     github_token: str = ""                    # optional: raises GitHub's API limit (60/h unauthenticated) for Real Match checks
     public_base_url: str = ""                 # e.g. https://api.mysite.com ; empty = same origin / dev proxy
 
@@ -41,7 +55,8 @@ class Settings(BaseSettings):
     # utf-8-sig also copes with a .env that was saved with a byte-order mark. Real OS environment variables (Render) still win.
     model_config = {"env_file": (str(BACKEND_DIR / ".env"), ".env"), "env_file_encoding": "utf-8-sig", "extra": "ignore"}
 
-    @field_validator("smtp_host", "smtp_user", "smtp_password", "smtp_from_email", "site_url", "openrouter_api_key", mode="before")
+    @field_validator("smtp_host", "smtp_user", "smtp_password", "smtp_from_email", "site_url", "openrouter_api_key",
+                     "groq_api_key", "linkedin_access_token", "linkedin_author_urn", "twitter_access_token", "facebook_page_id", "facebook_page_token", mode="before")
     @classmethod
     def _clean(cls, v):
         if isinstance(v, str):                # stray spaces or quotes pasted around a value would break login / links

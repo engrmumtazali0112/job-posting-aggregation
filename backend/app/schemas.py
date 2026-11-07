@@ -104,6 +104,11 @@ class _JobBase(BaseModel):
 class JobPublic(_JobBase):
     questions: list[QuestionPublic] = []                  # public view: no `ideal` answers
 
+class JobPublicDetail(JobPublic):
+    """Single-job view only: the AI article is too big to send with every row of a job list."""
+    ai_article: str | None = None
+    ai_image_url: str | None = None
+
 class JobFull(_JobBase):
     questions: list[QuestionFull] = []                    # employer / admin view: includes `ideal`
     hiring_timeline: str | None
