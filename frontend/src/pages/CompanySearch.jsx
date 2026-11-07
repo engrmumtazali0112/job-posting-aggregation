@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Seo from '../components/Seo.jsx'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api, qs } from '../api'
 import Icon from '../components/Icon.jsx'
@@ -13,6 +14,7 @@ export default function CompanySearch() {
 
   return (
     <div className="wrap">
+      <Seo title="Company reviews and salaries" description="Read employee reviews, ratings and salary reports for companies hiring in Pakistan." path="/companies" />
       <div className="co-hero">
         <h1>Find great places to work</h1>
         <p className="muted" style={{ fontSize: 20, marginBottom: 28 }}>Read reviews from people who work there</p>
