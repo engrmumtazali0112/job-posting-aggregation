@@ -56,11 +56,20 @@ def _send(name: str, url: str, **kwargs) -> bool:
     return False
 
 
+def linkedin_author() -> str:
+    """Who the post is published as: the Company Page (LINKEDIN_COMPANY_ID) unless LINKEDIN_AUTHOR_URN is set."""
+    cid = (settings.linkedin_company_id or "").strip()
+    return settings.linkedin_author_urn or (f"urn:li:organization:{cid}" if cid.isdigit() else "")
+
+
 def post_to_linkedin(job: Job) -> bool:
-    if not (settings.linkedin_access_token and settings.linkedin_author_urn):
+    """POST https://api.linkedin.com/v2/ugcPosts  (UGC Posts API), authored by the Company Page urn:li:organization:<id>.
+    Needs a token with w_organization_social from a Page admin; LinkedIn answers 201 Created with the post id in the x-restli-id header."""
+    author = linkedin_author()
+    if not (settings.linkedin_access_token and author):
         return False
     payload = {
-        "author": settings.linkedin_author_urn, "lifecycleState": "PUBLISHED",
+        "author": author, "lifecycleState": "PUBLISHED",
         "specificContent": {"com.linkedin.ugc.ShareContent": {
             "shareCommentary": {"text": post_text(job)}, "shareMediaCategory": "ARTICLE",
             "media": [{"status": "READY", "originalUrl": job_url(job), "title": {"text": job.title[:200]}}]}},
@@ -97,7 +106,7 @@ POSTERS = (post_to_linkedin, post_to_twitter, post_to_facebook)
 def share_jobs(db: Session, jobs: list[Job]) -> int:
     """Share up to SOCIAL_MAX_PER_RUN jobs on every linked network. A job is flagged social_posted once ANY network accepted it.
     Returns how many jobs were flagged. Safe to call with nothing configured."""
-    if not jobs or not any((settings.linkedin_access_token, settings.twitter_access_token, settings.facebook_page_token,
+    if not jobs or not any((settings.linkedin_access_token and linkedin_author(), settings.twitter_access_token, settings.facebook_page_token,
                             settings.social_dry_run)):
         return 0
     shared = 0
