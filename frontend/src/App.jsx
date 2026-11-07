@@ -17,6 +17,7 @@ const CompanySearch = lazyPage(() => import('./pages/CompanySearch.jsx'))
 const ForgotPassword = lazyPage(() => import('./pages/ForgotPassword.jsx'))
 const ResetPassword = lazyPage(() => import('./pages/ResetPassword.jsx'))
 const Apply = lazyPage(() => import('./pages/Apply.jsx'))
+const { About, Contact, Privacy, Terms } = lazyGroup(() => import('./pages/Legal.jsx'), ['About', 'Contact', 'Privacy', 'Terms'])
 const { Login, Register, VerifyEmail } = lazyGroup(() => import('./pages/Auth.jsx'), ['Login', 'Register', 'VerifyEmail'])
 const { Notifications, Messages } = lazyGroup(() => import('./pages/Inbox.jsx'), ['Notifications', 'Messages'])
 const E = lazyGroup(() => import('./pages/Employer.jsx'), ['Layout', 'LandingPage', 'Dashboard', 'PostJob', 'MyJobs', 'EditJob', 'Candidates', 'CompanyProfile'])
@@ -116,7 +117,7 @@ function Footer() {
           <div className="col"><strong>Job seekers</strong><Link to="/jobs">Find jobs</Link><Link to="/companies">Company reviews</Link><Link to="/register">Create account</Link></div>
           <div className="col"><strong>Employers</strong><Link to="/employer">Post a job</Link><Link to="/register?role=employer">Create employer account</Link></div>
         </div>
-        <div className="copy2">© {new Date().getFullYear()} JobBoard. All rights reserved.</div>
+        <div className="copy2">© {new Date().getFullYear()} JobBoard. All rights reserved. · <Link to="/about">About</Link> · <Link to="/contact">Contact</Link> · <Link to="/privacy">Privacy</Link> · <Link to="/terms">Terms</Link></div>
       </div>
     </footer>
   )
@@ -185,6 +186,10 @@ export default function App() {
           <Route path="/companies/:id" element={<Company />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
           <Route path="/verify-email/:token" element={<VerifyEmail />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password/:token" element={<ResetPassword />} />
