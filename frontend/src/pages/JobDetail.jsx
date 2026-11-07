@@ -20,15 +20,15 @@ export default function JobDetail() {
       <Seo title={`${job.title} at ${job.company_name}${where}`} description={summary || `${job.title} at ${job.company_name}`}
         path={'/jobs/' + job.id} jsonLd={jobPostingLd(job)} />
       <Link to="/jobs" className="link">← Back to jobs</Link>
-      {job.ai_article && (
-        <article className="card pad-card ai-article" style={{ marginTop: 14 }}>
-          {job.ai_image_url && imgOk && <img className="ai-article-img" src={job.ai_image_url} alt={job.title} loading="lazy" referrerPolicy="no-referrer" onError={() => setImgOk(false)} />}
-          <Markdown text={job.ai_article} />
-          <p className="muted small">This guide was written with AI from the job post. Check details on the original listing before you apply.</p>
-        </article>)}
+      {job.ai_image_url && imgOk && <img className="ai-article-img ai-hero" src={job.ai_image_url} alt={job.title} loading="eager" referrerPolicy="no-referrer" onError={() => setImgOk(false)} />}
       <div style={{ marginTop: 14 }}>
         <JobPane full job={job} saved={sj.saved.has(n)} applied={sj.applied.has(n)} onSave={sj.toggleSave} onApplied={sj.markApplied} canSave={sj.canSave} />
       </div>
+      {job.ai_article && (
+        <article className="card pad-card ai-article" style={{ marginTop: 14 }}>
+          <Markdown text={job.ai_article} />
+          <p className="muted small">This guide was written with AI from the job post. Check details on the original listing before you apply.</p>
+        </article>)}
     </div>
   )
 }

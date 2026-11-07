@@ -48,7 +48,8 @@ class Settings(BaseSettings):
     linkedin_client_secret: str = ""
     linkedin_company_id: str = ""             # numeric id of the Company Page, e.g. 104945423 -> posts as urn:li:organization:104945423
     linkedin_author_urn: str = ""             # optional: post as this urn instead (urn:li:person:XXXX)
-    twitter_access_token: str = ""            # OAuth 2.0 user-context token with tweet.write
+    twitter_bearer_token: str = ""            # token used for POST /2/tweets. Tweeting needs an OAuth 2.0 USER-context token (tweet.write); an app-only bearer cannot post
+    twitter_access_token: str = ""            # OAuth 2.0 user-context token, same use; kept for older .env files
     facebook_page_id: str = ""
     facebook_page_token: str = ""             # Page access token with pages_manage_posts
     github_token: str = ""                    # optional: raises GitHub's API limit (60/h unauthenticated) for Real Match checks
@@ -59,7 +60,7 @@ class Settings(BaseSettings):
     model_config = {"env_file": (str(BACKEND_DIR / ".env"), ".env"), "env_file_encoding": "utf-8-sig", "extra": "ignore"}
 
     @field_validator("smtp_host", "smtp_user", "smtp_password", "smtp_from_email", "site_url", "openrouter_api_key",
-                     "groq_api_key", "linkedin_access_token", "linkedin_author_urn", "linkedin_client_id", "linkedin_client_secret", "linkedin_company_id", "twitter_access_token", "facebook_page_id", "facebook_page_token", mode="before")
+                     "groq_api_key", "linkedin_access_token", "linkedin_author_urn", "linkedin_client_id", "linkedin_client_secret", "linkedin_company_id", "twitter_access_token", "twitter_bearer_token", "facebook_page_id", "facebook_page_token", mode="before")
     @classmethod
     def _clean(cls, v):
         if isinstance(v, str):                # stray spaces or quotes pasted around a value would break login / links
