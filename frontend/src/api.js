@@ -8,12 +8,13 @@ export const API = ROOT + '/api'
 export const getToken = () => sessionStorage.getItem('token')
 export const setToken = (t) => (t ? sessionStorage.setItem('token', t) : sessionStorage.removeItem('token'))
 
-async function request(path, { method = 'GET', body, form } = {}) {
+async function request(path, { method = 'GET', body, form, formData } = {}) {
   const headers = {}
   const t = getToken()
   if (t) headers.Authorization = 'Bearer ' + t
   let payload
-  if (form) { payload = new URLSearchParams(form); headers['Content-Type'] = 'application/x-www-form-urlencoded' }
+  if (formData) payload = formData                  // multipart: the browser sets the Content-Type (with its boundary)
+  else if (form) { payload = new URLSearchParams(form); headers['Content-Type'] = 'application/x-www-form-urlencoded' }
   else if (body !== undefined) { payload = JSON.stringify(body); headers['Content-Type'] = 'application/json' }
   let res
   try { res = await fetch(API + path, { method, headers, body: payload }) }
