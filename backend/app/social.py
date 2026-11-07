@@ -82,13 +82,14 @@ def post_to_linkedin(job: Job) -> bool:
 
 
 def post_to_twitter(job: Job) -> bool:
-    if not settings.twitter_access_token:
+    token = settings.twitter_bearer_token or settings.twitter_access_token
+    if not token:
         return False
     payload = {"text": tweet_text(job)}
     if settings.social_dry_run:
         return _dry("twitter", payload)
     return _send("twitter", "https://api.twitter.com/2/tweets", json=payload,
-                 headers={"Authorization": f"Bearer {settings.twitter_access_token}"})
+                 headers={"Authorization": f"Bearer {token}"})
 
 
 def post_to_facebook(job: Job) -> bool:
@@ -106,7 +107,7 @@ POSTERS = (post_to_linkedin, post_to_twitter, post_to_facebook)
 def share_jobs(db: Session, jobs: list[Job]) -> int:
     """Share up to SOCIAL_MAX_PER_RUN jobs on every linked network. A job is flagged social_posted once ANY network accepted it.
     Returns how many jobs were flagged. Safe to call with nothing configured."""
-    if not jobs or not any((settings.linkedin_access_token and linkedin_author(), settings.twitter_access_token, settings.facebook_page_token,
+    if not jobs or not any((settings.linkedin_access_token and linkedin_author(), settings.twitter_bearer_token, settings.twitter_access_token, settings.facebook_page_token,
                             settings.social_dry_run)):
         return 0
     shared = 0

@@ -181,7 +181,7 @@ def add_articles(db: Session, jobs: list[Job], limit: int | None = None) -> dict
             report["stopped"] = "reached the per-run limit"
             break
         try:
-            out = ai_service.generate_job_article(job.title, job.company_name, job.description, job.location)
+            out = ai_service.generate_job_content(job.title, job.company_name, job.description, job.location)
             job.ai_article, job.ai_image_url = out["article_markdown"], out["image_url"] or None
             db.commit()
             report["made"] += 1
