@@ -48,24 +48,73 @@ def fetch_rss(url):
             "apply_url": e.get("link"),
         }
 
-JOOBLE_QUERIES = [("", "Pakistan"), ("", "Islamabad"), ("", "Rawalpindi"),
-                  ("", "Lahore"), ("", "Karachi"), ("developer", "Pakistan")]
+# Local focus: Islamabad and Rawalpindi get the deepest search, other big cities and Pakistan-wide get a lighter one.
+PRIORITY_CITIES = ["Islamabad", "Rawalpindi"]
+OTHER_PLACES = ["Pakistan", "Lahore", "Karachi"]
+JOOBLE_KEYWORDS = ["developer", "software engineer", "python", "react", "data", "marketing", "accountant", "sales"]
+PRIORITY_PAGES = 3          # pages of ALL jobs (no keyword) for each priority city
+OTHER_PAGES = 1
+JOOBLE_PAUSE = 0.3          # seconds between requests, to be polite to the API
+JOOBLE_RETRIES = 3
+
+def _jooble_queries():
+    """(keywords, location, pages) tuples, priority cities first."""
+    for city in PRIORITY_CITIES:
+        yield "", city, PRIORITY_PAGES
+        for kw in JOOBLE_KEYWORDS:
+            yield kw, city, 1
+    for place in OTHER_PLACES:
+        yield "", place, OTHER_PAGES
+    yield "developer", "Pakistan", OTHER_PAGES
+
+def _jooble_post(url, payload):
+    """POST with retries: 429 and 5xx wait and try again; other errors are raised straight away."""
+    import time
+    for attempt in range(1, JOOBLE_RETRIES + 1):
+        try:
+            r = httpx.post(url, json=payload, timeout=30)
+            if r.status_code == 429 or r.status_code >= 500:
+                raise httpx.HTTPStatusError(f"HTTP {r.status_code}", request=r.request, response=r)
+            r.raise_for_status()
+            return r.json()
+        except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+            retryable = isinstance(exc, httpx.TransportError) or exc.response.status_code in (429,) or exc.response.status_code >= 500
+            if not retryable or attempt == JOOBLE_RETRIES:
+                raise
+            time.sleep(2 ** attempt)
 
 def fetch_jooble(_endpoint):
+    """One failing query (timeout, 429, bad city) is logged and skipped; the source only fails when EVERY query failed."""
+    import time
     if not settings.jooble_api_key:
         raise RuntimeError("JOOBLE_API_KEY is not set in .env")
-    for kw, loc in JOOBLE_QUERIES:
-        r = httpx.post(f"https://jooble.org/api/{settings.jooble_api_key}",
-                       json={"keywords": kw, "location": loc, "page": 1}, timeout=30)
-        r.raise_for_status()
-        for j in r.json().get("jobs", []):
-            yield {
-                "title": clean(j.get("title")),
-                "company": clean(j.get("company")) or "Unknown",
-                "location": j.get("location") or loc,
-                "description": clean_desc(j.get("snippet"))[:5000],
-                "apply_url": j.get("link"),
-            }
+    url = f"https://jooble.org/api/{settings.jooble_api_key}"
+    ok = failed = 0
+    last_error = None
+    for kw, loc, pages in _jooble_queries():
+        for page in range(1, pages + 1):
+            try:
+                data = _jooble_post(url, {"keywords": kw, "location": loc, "page": page})
+            except Exception as exc:
+                failed += 1
+                last_error = exc
+                print(f"[jooble] '{kw}' in {loc} page {page} failed: {exc!r}")
+                break                                   # skip the remaining pages of this query
+            ok += 1
+            jobs = data.get("jobs", [])
+            for j in jobs:
+                yield {
+                    "title": clean(j.get("title")),
+                    "company": clean(j.get("company")) or "Unknown",
+                    "location": clean(j.get("location")) or loc,
+                    "description": clean_desc(j.get("snippet"))[:5000],
+                    "apply_url": j.get("link"),
+                }
+            if len(jobs) < 20:                          # a short page means there is no next page
+                break
+            time.sleep(JOOBLE_PAUSE)
+    if ok == 0 and failed:
+        raise RuntimeError(f"all {failed} Jooble queries failed, last error: {last_error!r}")
 
 FETCHERS = {"api": fetch_api, "rss": fetch_rss, "jooble": fetch_jooble}
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Seo from '../components/Seo.jsx'
 import { useSearchParams } from 'react-router-dom'
 import { apiList, qs, CATEGORIES } from '../api'
 import JobSplit from '../components/JobSplit.jsx'
@@ -24,6 +25,7 @@ export default function Jobs() {
 
   return (
     <div className="wrap pad">
+      <Seo title="Find jobs in Pakistan" description="Browse and filter the newest jobs by keyword, city, job type and workplace: Islamabad, Rawalpindi, Lahore, Karachi and remote." path="/jobs" />
       <SearchPill q={q} loc={loc} setQ={setQ} setLoc={setLoc} onSubmit={submit} />
       <div className="filter-line" style={{ marginTop: 18 }}>
         <select className="mini" value={category} onChange={(e) => setParam('category', e.target.value)}>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Seo from '../components/Seo.jsx'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import PanelLayout from '../components/PanelLayout.jsx'
 import JobForm, { toForm } from '../components/JobForm.jsx'
@@ -43,6 +44,7 @@ export function LandingPage() {
   const cta = user?.role === 'employer' ? '/employer/dashboard/post' : '/register?role=employer'
   return (
     <div className="wrap">
+      <Seo title="Post jobs and hire in Pakistan" description="Post a job, screen candidates with skill matching and hire faster on JobBoard." path="/employer" />
       <section className="e-hero">
         <div>
           <h1>Hire the right people, <em style={{ fontStyle: 'normal', color: 'var(--p)' }}>faster</em></h1>
