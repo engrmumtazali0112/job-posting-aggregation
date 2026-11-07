@@ -42,6 +42,15 @@ def fetch_himalayas(offset: int = 0, limit: int = PAGE_SIZE) -> list[dict]:
     return jobs if isinstance(jobs, list) else []
 
 
+def pakistan_eligible(j: dict) -> bool:
+    """Himalayas jobs are remote. Keep one only if it is open worldwide (no restriction listed) or lists Pakistan.
+    Skipping the rest saves AI requests for jobs a Pakistan-based seeker could not take anyway."""
+    locations = j.get("locationRestrictions") or []
+    if not isinstance(locations, list) or not locations:
+        return True
+    return any("pakistan" in str(x).lower() or str(x).strip().lower() in ("worldwide", "anywhere", "global") for x in locations)
+
+
 def _apply_link(j: dict) -> str | None:
     link = j.get("applicationLink") or j.get("guid") or j.get("url")
     return link.strip()[:500] if isinstance(link, str) and link.strip().lower().startswith(("http://", "https://")) else None
@@ -92,6 +101,9 @@ def run(db: Session, max_new: int = MAX_NEW_PER_RUN) -> dict:
                 report["stopped"] = report["stopped"] or "reached the per-run limit"
                 return report
             if not link or not j.get("title"):
+                continue
+            if not pakistan_eligible(j):
+                report["filtered"] = report.get("filtered", 0) + 1
                 continue
             if link in known:
                 report["duplicates"] += 1
