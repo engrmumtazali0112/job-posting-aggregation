@@ -123,7 +123,7 @@ def start():
     sched = BackgroundScheduler()
     # Set RUN_SCHEDULER=false on extra workers so ingestion only runs once.
     if os.getenv("RUN_SCHEDULER", "true").lower() != "false":
-        sched.add_job(ingest_job, "interval", minutes=30, next_run_time=datetime.now())
+        sched.add_job(ingest_job, "interval", minutes=max(1, settings.ingest_interval_minutes), next_run_time=datetime.now())   # INGEST_INTERVAL_MINUTES, default daily
         sched.add_job(alerts_job, "cron", minute=5, id="job_alerts", max_instances=1, coalesce=True)   # every hour, at :05
         # AI scraper: no run at startup on purpose (a restart should not burn free OpenRouter quota); first run is 2 hours after start, then every 2 hours
         sched.add_job(ai_scrape_job, "interval", hours=2, id="ai_scraper", max_instances=1, coalesce=True)
