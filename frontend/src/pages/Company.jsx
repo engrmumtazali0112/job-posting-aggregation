@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import Seo from '../components/Seo.jsx'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { api, JOB_TYPES, timeAgo } from '../api'
 import { useAuth } from '../auth.jsx'
@@ -77,6 +78,7 @@ export default function Company() {
 
   return (
     <div className="wrap pad cp">
+      <Seo title={`${co.name} reviews, salaries and jobs`} description={`Employee reviews, salaries and open jobs at ${co.name}.`} />
       <nav className="muted cp-crumb"><Link to="/companies" className="link">Companies</Link> › {co.name}</nav>
       <header className="cp-head">
         <span className="cp-logo">{co.logo_url ? <img src={co.logo_url} alt="" /> : co.name[0].toUpperCase()}</span>

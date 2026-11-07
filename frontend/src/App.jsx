@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+﻿import { useState, useEffect, lazy, Suspense } from 'react'
 import { Link, NavLink, Outlet, Route, Routes, Navigate, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from './auth.jsx'
 import { api } from './api'
@@ -6,18 +6,22 @@ import Icon from './components/Icon.jsx'
 import logo from './assets/JobBoard Trusty Growth Icons.png'
 import { useOutside } from './components/ui.jsx'
 import Home from './pages/Home.jsx'
-import Jobs from './pages/Jobs.jsx'
-import JobDetail from './pages/JobDetail.jsx'
-import Company from './pages/Company.jsx'
-import CompanySearch from './pages/CompanySearch.jsx'
-import { Login, Register, VerifyEmail } from './pages/Auth.jsx'
-import ForgotPassword from './pages/ForgotPassword.jsx'
-import ResetPassword from './pages/ResetPassword.jsx'
-import { Notifications, Messages } from './pages/Inbox.jsx'
-import Apply from './pages/Apply.jsx'
-import * as E from './pages/Employer.jsx'
-import * as A from './pages/Admin.jsx'
-import * as S from './pages/Seeker.jsx'
+
+// Everything except the home page is loaded on demand, so the first visit downloads far less code.
+const lazyPage = (loader, name) => lazy(() => loader().then((m) => ({ default: name ? m[name] : m.default })))
+const lazyGroup = (loader, names) => Object.fromEntries(names.map((n) => [n, lazyPage(loader, n)]))
+const Jobs = lazyPage(() => import('./pages/Jobs.jsx'))
+const JobDetail = lazyPage(() => import('./pages/JobDetail.jsx'))
+const Company = lazyPage(() => import('./pages/Company.jsx'))
+const CompanySearch = lazyPage(() => import('./pages/CompanySearch.jsx'))
+const ForgotPassword = lazyPage(() => import('./pages/ForgotPassword.jsx'))
+const ResetPassword = lazyPage(() => import('./pages/ResetPassword.jsx'))
+const Apply = lazyPage(() => import('./pages/Apply.jsx'))
+const { Login, Register, VerifyEmail } = lazyGroup(() => import('./pages/Auth.jsx'), ['Login', 'Register', 'VerifyEmail'])
+const { Notifications, Messages } = lazyGroup(() => import('./pages/Inbox.jsx'), ['Notifications', 'Messages'])
+const E = lazyGroup(() => import('./pages/Employer.jsx'), ['Layout', 'LandingPage', 'Dashboard', 'PostJob', 'MyJobs', 'EditJob', 'Candidates', 'CompanyProfile'])
+const A = lazyGroup(() => import('./pages/Admin.jsx'), ['Layout', 'Dashboard', 'Jobs', 'EditJob', 'Users', 'Companies', 'Settings'])
+const S = lazyGroup(() => import('./pages/Seeker.jsx'), ['Layout', 'Dashboard', 'Applications', 'Saved', 'Profile'])
 
 const SEEKER_MENU = [['/my', 'dash', 'Dashboard'], ['/my/applications', 'briefcase', 'My applications'], ['/my/saved', 'bookmark', 'Saved jobs'], ['/my/profile', 'user', 'Profile'], ['/companies', 'star', 'Company reviews']]
 const HIRING_MENU = [['/employer/dashboard', 'dash', 'Employer dashboard'], ['/employer/dashboard/post', 'pencil', 'Post a job'], ['/employer/dashboard/company', 'building', 'Company profile']]
@@ -171,6 +175,7 @@ export default function App() {
       <ScrollTop />
       <Navbar />
       <main>
+        <Suspense fallback={<div className="wrap pad">Loading...</div>}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/jobs" element={<Jobs />} />
@@ -216,6 +221,7 @@ export default function App() {
           </Route>
           <Route path="*" element={<div className="wrap pad"><div className="card empty">Page not found.</div></div>} />
         </Routes>
+        </Suspense>
       </main>
       {!inPanel && <Footer />}
     </>

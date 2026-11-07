@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Seo from '../components/Seo.jsx'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth.jsx'
@@ -34,6 +35,7 @@ export default function Home() {
 
   return (
     <>
+      <Seo title="JobBoard – Jobs in Islamabad, Rawalpindi and across Pakistan" description="Search the latest jobs in Pakistan from top sources and verified employers. Read company reviews and salaries, then apply in one click." path="/" />
       <section className="hero">
         {videoOk && (
           <video className="hero-video" autoPlay muted loop playsInline preload="metadata"
