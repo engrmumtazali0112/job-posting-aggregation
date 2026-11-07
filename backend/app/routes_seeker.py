@@ -1,6 +1,9 @@
+import json
 import re
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile, File
+from fastapi.concurrency import run_in_threadpool
+from pydantic import ValidationError
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from .database import get_db
@@ -294,8 +297,7 @@ def check_answers(job: Job, given) -> list[dict]:
     return out
 
 
-@router.post("/jobs/{job_id}/apply")
-def apply_to_job(job_id: int, data: ApplicationIn, user: User = Depends(seeker), db: Session = Depends(get_db)):
+def _apply(job_id: int, data: ApplicationIn, upload: UploadFile | None, user: User, db: Session):
     job = db.get(Job, job_id)
     if not job or job.status != "published":
         raise HTTPException(404, "Job not found or no longer active")
@@ -303,18 +305,53 @@ def apply_to_job(job_id: int, data: ApplicationIn, user: User = Depends(seeker),
         raise HTTPException(400, "This job is hosted on another website. Use the Apply now link.")
     if db.scalar(select(Application).where(Application.job_id == job_id, Application.user_id == user.id)):
         raise HTTPException(409, "You have already applied to this job")
-    answers = check_answers(job, data.answers)
+    answers = check_answers(job, data.answers)                              # validate first, so a bad form never leaves an orphan file
     prof = db.scalar(select(SeekerProfile).where(SeekerProfile.user_id == user.id))
-    resume = data.resume_url or (prof.resume_url if prof else None)       # fall back to the profile resume
-    resume_text = prof.resume_text if (prof and resume and resume == prof.resume_url) else None
-    db.add(Application(job_id=job_id, user_id=user.id, cover_letter=data.cover_letter, resume_url=resume,
-                       resume_text=resume_text, answers=answers or None))
-    company = db.get(Company, job.company_id) if job.company_id else None
-    if company and company.user_id:
-        notify(db, company.user_id, f"{user.full_name or user.email} applied to {job.title}.",
-               "/employer/dashboard/candidates")
-    db.commit()
-    return {"ok": True}
+    new_url = None
+    if upload is not None and upload.filename:                              # a resume uploaded on this page wins
+        new_url, _ = storage.save_resume(upload)                            # raises 400/413 for bad files
+        resume, resume_text = new_url, (storage.extract_text(new_url) or None)
+    else:                                                                   # otherwise fall back to the profile resume
+        resume = data.resume_url or (prof.resume_url if prof else None)
+        resume_text = prof.resume_text if (prof and resume and resume == prof.resume_url) else None
+    try:
+        db.add(Application(job_id=job_id, user_id=user.id, cover_letter=data.cover_letter, resume_url=resume,
+                           resume_text=resume_text, answers=answers or None))
+        company = db.get(Company, job.company_id) if job.company_id else None
+        if company and company.user_id:
+            notify(db, company.user_id, f"{user.full_name or user.email} applied to {job.title}.",
+                   "/employer/dashboard/candidates")
+        db.commit()
+    except Exception:
+        db.rollback()
+        storage.delete_file(new_url)                                        # do not keep a file for an application that was not saved
+        raise
+    return {"ok": True, "resume_url": resume, "resume_readable": bool(resume_text)}
+
+
+@router.post("/jobs/{job_id}/apply")
+async def apply_to_job(job_id: int, request: Request, user: User = Depends(seeker), db: Session = Depends(get_db)):
+    """Accepts multipart/form-data (fields: cover_letter, answers = JSON list, resume_url, resume = file) or the older JSON body."""
+    upload = None
+    try:
+        if request.headers.get("content-type", "").startswith(("multipart/form-data", "application/x-www-form-urlencoded")):
+            form = await request.form()
+            try:
+                answers = json.loads(form.get("answers") or "[]")
+            except ValueError:
+                raise HTTPException(422, "The answers could not be read")
+            data = ApplicationIn(cover_letter=(form.get("cover_letter") or None), resume_url=(form.get("resume_url") or None),
+                                 answers=answers)
+            upload = form.get("resume")
+            if not hasattr(upload, "filename"):                              # a plain text field, not a file
+                upload = None
+        else:
+            data = ApplicationIn(**(await request.json()))
+    except ValidationError as exc:
+        raise HTTPException(422, [{"msg": e["msg"]} for e in exc.errors()])
+    except (TypeError, ValueError):
+        raise HTTPException(422, "The request body is not valid")
+    return await run_in_threadpool(_apply, job_id, data, upload, user, db)
 
 
 # --- Saved Jobs ---

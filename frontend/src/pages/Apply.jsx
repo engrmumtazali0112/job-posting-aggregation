@@ -1,6 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api'
+
+const MAX_MB = 5
+const OK_EXT = /\.(pdf|png|jpe?g)$/i
 
 const NOTE = {
   ok: ['ok', 'Your resume is readable, so employers can see how well it matches this job.'],
@@ -25,6 +28,7 @@ export default function Apply() {
   const { id } = useParams()
   const [job, setJob] = useState(null); const [profile, setProfile] = useState(null); const [err, setErr] = useState('')
   const [cover, setCover] = useState(''); const [ans, setAns] = useState({}); const [busy, setBusy] = useState(false); const [done, setDone] = useState(false)
+  const [file, setFile] = useState(null); const fileRef = useRef(null)
   useEffect(() => {
     api('/jobs/' + id).then(setJob).catch((e) => setErr(e.message))
     api('/seeker/profile').then(setProfile).catch(() => {})
@@ -46,11 +50,23 @@ export default function Apply() {
     if (missing) { setErr('Please answer: ' + missing.text); return }
     setBusy(true)
     try {
-      await api(`/seeker/jobs/${id}/apply`, { method: 'POST', body: { cover_letter: cover.trim() || null, resume_url: profile?.resume_url || null,
-        answers: job.questions.map((q) => ({ id: q.id, answer: String(ans[q.id] || '').trim() })).filter((a) => a.answer) } })
+      const fd = new FormData()
+      if (cover.trim()) fd.append('cover_letter', cover.trim())
+      fd.append('answers', JSON.stringify(job.questions.map((q) => ({ id: q.id, answer: String(ans[q.id] || '').trim() })).filter((a) => a.answer)))
+      if (file) fd.append('resume', file)                                   // a new resume for this application only
+      else if (profile?.resume_url) fd.append('resume_url', profile.resume_url)   // otherwise the profile resume
+      await api(`/seeker/jobs/${id}/apply`, { method: 'POST', formData: fd })
       setDone(true)
     } catch (x) { setErr(x.message) } finally { setBusy(false) }
   }
+  const pick = (e) => {
+    const f = e.target.files?.[0]; setErr('')
+    if (!f) { setFile(null); return }
+    if (!OK_EXT.test(f.name)) { setErr('Resume must be a PDF, PNG or JPG file.'); e.target.value = ''; setFile(null); return }
+    if (f.size > MAX_MB * 1024 * 1024) { setErr(`Resume is too large. Maximum size is ${MAX_MB} MB.`); e.target.value = ''; setFile(null); return }
+    setFile(f)
+  }
+  const clearFile = () => { setFile(null); if (fileRef.current) fileRef.current.value = '' }
   const [tone, text] = NOTE[profile?.resume_state] || NOTE.none
   return (
     <div className="wrap pad">
@@ -58,9 +74,11 @@ export default function Apply() {
         <Link to={`/jobs/${id}`} className="link">‹ Back to job</Link>
         <h1 className="page-title" style={{ margin: '8px 0 2px' }}>Apply: {job.title}</h1>
         <p className="muted">{job.company_name}{job.location ? ' · ' + job.location : ''}</p>
-        <div className={'alert ' + (tone === 'ok' ? 'ok' : 'warn')}>
-          {text} {tone !== 'ok' && <Link className="link" to="/my/profile?focus=resume">Open profile</Link>}
-        </div>
+        {file
+          ? <div className="alert ok">This file will be sent with this application only. Your profile resume is not changed. A text-based PDF gives the best job match.</div>
+          : <div className={'alert ' + (tone === 'ok' ? 'ok' : 'warn')}>
+              {text} {tone !== 'ok' && <Link className="link" to="/my/profile?focus=resume">Open profile</Link>}
+            </div>}
         {job.questions.length > 0 && <>
           <h3>Questions from the employer</h3>
           {job.questions.map((q) => {
@@ -70,6 +88,11 @@ export default function Apply() {
                 <Field q={q} value={ans[q.id] || ''} onChange={set(q.id)} /></Wrap>)
           })}
         </>}
+        <label>Upload a resume for this job (optional)
+          <input ref={fileRef} type="file" accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" onChange={pick} />
+          <span className="muted small">PDF, PNG or JPG, up to {MAX_MB} MB.{profile?.resume_name && !file ? ` If you skip this, your profile resume (${profile.resume_name}) is used.` : ''}</span>
+        </label>
+        {file && <p className="muted small">Selected: <b>{file.name}</b> · <button type="button" className="link" onClick={clearFile}>Remove</button></p>}
         <label>Cover letter (optional)<textarea rows={5} maxLength={5000} value={cover} onChange={(e) => setCover(e.target.value)} placeholder="Tell the employer why you are a good fit" /></label>
         {err && <div className="alert" role="alert">{err}</div>}
         <div className="acts"><button className="btn btn-primary" disabled={busy}>{busy ? 'Sending…' : 'Submit application'}</button>
