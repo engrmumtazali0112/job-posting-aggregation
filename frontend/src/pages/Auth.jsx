@@ -102,15 +102,34 @@ function GoogleButton({ onError }) {
   return <><div className="ax-or"><span>OR</span></div><div className="ax-google" ref={box} /></>
 }
 
+// Render's free tier sleeps when idle: the first request gets a 502/503/504 (or no answer at all) while the server wakes up.
+const COLD = [502, 503, 504]
+
+// Shown instead of a plain error while the backend is waking up: spinner + message, and a Retry button after 5 seconds.
+function ServerWaking({ message, onRetry, busy }) {
+  const [canRetry, setCanRetry] = useState(false)
+  useEffect(() => { const t = setTimeout(() => setCanRetry(true), 5000); return () => clearTimeout(t) }, [])
+  return (
+    <div className="alert warn ax-wake" role="status" aria-live="polite">
+      <div className="ax-wake__msg"><span className="ax-spinner" aria-hidden="true" /><span>{message}</span></div>
+      {canRetry && <button type="button" className="btn btn-primary sm" onClick={onRetry} disabled={busy}>{busy ? 'Retrying…' : 'Retry Login'}</button>}
+    </div>
+  )
+}
+
 export function Login() {
   const { login } = useAuth(); const nav = useNavigate()
   const [email, setEmail] = useState(''); const [pw, setPw] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false)
-  const [unverified, setUnverified] = useState(false)
+  const [unverified, setUnverified] = useState(false); const [waking, setWaking] = useState('')
   const justReset = useLocation().state?.reset                // set by the reset-password page after a successful change
   const submit = async (e) => {
-    e.preventDefault(); setErr(''); setUnverified(false); setBusy(true)
+    if (e) e.preventDefault()
+    setErr(''); setUnverified(false); setBusy(true)
     try { const me = await login(email.trim(), pw); if (me) nav(home(me)) }
-    catch (x) { setErr(x.message); setUnverified(x.code === 'email_not_verified') } finally { setBusy(false) }
+    catch (x) {
+      const cold = !x.status || COLD.includes(x.status)          // the server is asleep / starting, so keep the form and offer a retry
+      setWaking(cold ? x.message : ''); setErr(cold ? '' : x.message); setUnverified(x.code === 'email_not_verified')
+    } finally { setBusy(false) }
   }
   return (
     <Shell title="Welcome back" sub="Log in to your account" foot={<>New here? <Link to="/register">Create an account</Link></>}
@@ -123,6 +142,7 @@ export function Login() {
         <PasswordField label="Password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="current-password" />
         <div className="ax-forgot"><Link to="/forgot-password">Forgot password?</Link></div>
         {err && <div className="alert" role="alert">{err}</div>}
+        {waking && <ServerWaking message={waking} busy={busy} onRetry={() => submit()} />}
         {unverified && <ResendVerification email={email} />}
         <button className="btn btn-primary full" disabled={busy}>{busy ? 'Logging in…' : 'Log in'}</button>
       </form>
