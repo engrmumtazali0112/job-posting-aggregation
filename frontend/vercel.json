@@ -2,22 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://job-posting-aggregation.onrender.com/api/:path*"
-    },
-    {
-      "source": "/sitemap.xml",
-      "destination": "https://job-posting-aggregation.onrender.com/api/sitemap.xml"
-    },
-    {
-      "source": "/jobs/:id(\\d+)",
-      "has": [
-        {
-          "type": "header",
-          "key": "user-agent",
-          "value": "(?i).*(facebookexternalhit|whatsapp|linkedinbot|twitterbot|telegrambot|slackbot|discordbot|googlebot|bingbot|skypeuripreview|pinterest).*"
-        }
-      ],
-      "destination": "/api/job-meta?id=:id"
+      "destination": "https://YOUR-RAILWAY-URL.up.railway.app/api/:path*"
     },
     {
       "source": "/(.*)",
