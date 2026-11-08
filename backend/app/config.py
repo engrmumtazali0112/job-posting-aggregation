@@ -34,6 +34,24 @@ class Settings(BaseSettings):
     smtp_password: str = ""                   # for Gmail a 16-character App Password, NOT your normal password
     smtp_from_email: str = ""                 # the From address; empty = same as smtp_user (Gmail always sends from the logged-in account)
     smtp_from_name: str = "JobBoard"          # the name recipients see
+    # --- AI article generation (Groq) ---
+    groq_api_key: str = ""                    # https://console.groq.com/keys ; empty = no articles are generated
+    groq_model: str = "openai/gpt-oss-120b"   # the Llama 3 models are not offered to this account; list the ids your key can use at GET https://api.groq.com/openai/v1/models
+    ai_articles_per_run: int = 15             # most Groq calls per ingest run (free tier is rate limited); the rest are picked up by the next run
+    ai_article_pause: float = 2.0             # seconds between Groq calls
+    ingest_interval_minutes: int = 1440       # how often the scheduler fetches jobs: 1440 = daily (it also runs once at startup)
+    # --- social auto-sharing (all optional: a platform with no credentials is skipped) ---
+    social_max_per_run: int = 5               # most new jobs shared per run, so the accounts are not flooded
+    social_dry_run: bool = False              # true = log the posts instead of sending them
+    linkedin_access_token: str = ""           # OAuth token with the w_member_social (or w_organization_social) scope
+    linkedin_client_id: str = ""              # from your LinkedIn developer app (used when you generate or renew the access token)
+    linkedin_client_secret: str = ""
+    linkedin_company_id: str = ""             # numeric id of the Company Page, e.g. 104945423 -> posts as urn:li:organization:104945423
+    linkedin_author_urn: str = ""             # optional: post as this urn instead (urn:li:person:XXXX)
+    twitter_bearer_token: str = ""            # token used for POST /2/tweets. Tweeting needs an OAuth 2.0 USER-context token (tweet.write); an app-only bearer cannot post
+    twitter_access_token: str = ""            # OAuth 2.0 user-context token, same use; kept for older .env files
+    facebook_page_id: str = ""
+    facebook_page_token: str = ""             # Page access token with pages_manage_posts
     github_token: str = ""                    # optional: raises GitHub's API limit (60/h unauthenticated) for Real Match checks
     public_base_url: str = ""                 # e.g. https://api.mysite.com ; empty = same origin / dev proxy
 
@@ -41,7 +59,8 @@ class Settings(BaseSettings):
     # utf-8-sig also copes with a .env that was saved with a byte-order mark. Real OS environment variables (Render) still win.
     model_config = {"env_file": (str(BACKEND_DIR / ".env"), ".env"), "env_file_encoding": "utf-8-sig", "extra": "ignore"}
 
-    @field_validator("smtp_host", "smtp_user", "smtp_password", "smtp_from_email", "site_url", "openrouter_api_key", mode="before")
+    @field_validator("smtp_host", "smtp_user", "smtp_password", "smtp_from_email", "site_url", "openrouter_api_key",
+                     "groq_api_key", "linkedin_access_token", "linkedin_author_urn", "linkedin_client_id", "linkedin_client_secret", "linkedin_company_id", "twitter_access_token", "twitter_bearer_token", "facebook_page_id", "facebook_page_token", mode="before")
     @classmethod
     def _clean(cls, v):
         if isinstance(v, str):                # stray spaces or quotes pasted around a value would break login / links

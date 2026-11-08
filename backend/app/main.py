@@ -9,7 +9,7 @@ from .config import settings
 from .emailer import smtp_configured, smtp_summary
 from .database import Base, engine, get_db
 from .models import Job
-from .schemas import JobPublic
+from .schemas import JobPublic, JobPublicDetail
 from . import storage
 from . import (routes_auth, routes_google_auth, routes_employer, routes_admin, routes_seeker, routes_company,
                routes_notifications, routes_messages, routes_home, routes_seo, scheduler)
@@ -87,7 +87,7 @@ def list_jobs(response: Response, q: str = "", location: str = "", source: str =
     response.headers["X-Total-Count"] = str(db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())))
     return db.scalars(stmt.limit(min(limit, 50)).offset(offset)).all()
 
-@app.get("/api/jobs/{job_id}", response_model=JobPublic)
+@app.get("/api/jobs/{job_id}", response_model=JobPublicDetail)
 def get_job(job_id: int, db: Session = Depends(get_db)):
     job = db.get(Job, job_id)
     if not job or job.status != "published":

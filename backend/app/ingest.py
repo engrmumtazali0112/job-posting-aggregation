@@ -1,10 +1,11 @@
-import re, html
+import re, html, time
 import httpx, feedparser
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from .config import settings
 from .models import Job, JobSource, make_hash
 from .services import unclaimed_company
+from . import ai_service, social
 
 SOURCES = [
     {"name": "Arbeitnow", "type": "api", "endpoint": "https://www.arbeitnow.com/api/job-board-api"},
@@ -126,7 +127,7 @@ def get_source(db: Session, cfg: dict) -> JobSource:
         db.commit()
     return src
 
-def save_jobs(db: Session, src: JobSource, items) -> dict:
+def save_jobs(db: Session, src: JobSource, items, collect: list | None = None) -> dict:
     items = list(items)                      # fetch first, so no DB connection sits idle
     existing = set(db.scalars(select(Job.dedupe_hash)))
     new, skipped = [], 0
@@ -146,6 +147,8 @@ def save_jobs(db: Session, src: JobSource, items) -> dict:
                        source_id=src.id, status="published", dedupe_hash=h))
     db.add_all(new)
     db.commit()
+    if collect is not None:
+        collect.extend(new)                  # run_all adds AI articles and social posts for these after every source is saved
     try:
         from .telegram import share_jobs
         if settings.telegram_share_aggregated:
@@ -164,17 +167,98 @@ def expire_stale(db: Session) -> int:
     db.commit()
     return res.rowcount
 
-def run_all(db: Session) -> dict:
+def add_articles(db: Session, jobs: list[Job], limit: int | None = None) -> dict:
+    """Write an AI article for each job (at most `limit` Groq calls, default AI_ARTICLES_PER_RUN). One failed job is logged and skipped:
+    it is still published with its normal description, and a later run tries it again. Returns a small report."""
+    report = {"made": 0, "failed": 0, "stopped": None}
+    in_a_row = 0                                   # failures in a row: Groq is probably down, stop wasting calls
+    if not settings.groq_api_key:
+        report["stopped"] = "GROQ_API_KEY is not set"
+        return report
+    limit = settings.ai_articles_per_run if limit is None else limit
+    for n, job in enumerate(jobs):
+        if n >= limit:
+            report["stopped"] = "reached the per-run limit"
+            break
+        try:
+            out = ai_service.generate_job_content(job.title, job.company_name, job.description, job.location)
+            job.ai_article, job.ai_image_url = out["article_markdown"], out["image_url"] or None
+            db.commit()
+            report["made"] += 1
+            in_a_row = 0
+        except ai_service.AIUnavailable as exc:        # no key / bad key / rate limited: more calls would fail too
+            db.rollback()
+            report["stopped"] = str(exc)
+            break
+        except Exception as exc:                       # one bad job must not stop the rest
+            db.rollback()
+            report["failed"] += 1
+            in_a_row += 1
+            print(f"[ai] article failed for job {job.id}:", repr(exc))
+            if in_a_row >= 3:
+                report["stopped"] = "3 failures in a row"
+                break
+        time.sleep(settings.ai_article_pause)
+    return report
+
+
+def jobs_missing_articles(db: Session, limit: int) -> list[Job]:
+    """Newest published aggregated jobs that still have no article (earlier run hit the limit, or the AI call failed)."""
+    if limit <= 0:
+        return []
+    return list(db.scalars(select(Job).where(Job.source_type == "aggregated", Job.status == "published", Job.ai_article.is_(None))
+                           .order_by(Job.id.desc()).limit(limit)))
+
+
+def enrich_and_share(db: Session, fresh: list[Job]) -> dict:
+    """New jobs first, then older jobs that are still missing an article, up to the per-run limit; then share the NEW jobs
+    (articles first) on the linked social networks. Never raises."""
     report = {}
+    try:
+        if not settings.groq_api_key:
+            raise ai_service.AIUnavailable("GROQ_API_KEY is not set")
+        fresh_ids = {j.id for j in fresh}
+        queue = fresh + [j for j in jobs_missing_articles(db, settings.ai_articles_per_run) if j.id not in fresh_ids]
+        report["ai"] = add_articles(db, queue)
+    except ai_service.AIUnavailable as exc:
+        report["ai"] = {"skipped": str(exc)}
+    except Exception as exc:
+        db.rollback()
+        report["ai"] = {"error": str(exc)}
+    try:
+        ordered = sorted(fresh, key=lambda j: j.ai_article is None)           # jobs with an article go out first
+        report["social"] = social.share_jobs(db, ordered)
+    except Exception as exc:
+        db.rollback()
+        report["social"] = {"error": str(exc)}
+    return report
+
+
+def enrich_in_background(job_ids: list[int]) -> None:
+    """For the admin 'Run aggregation now' button: the HTTP request returns at once and this runs afterwards with its own session."""
+    from .database import SessionLocal
+    with SessionLocal() as db:
+        fresh = list(db.scalars(select(Job).where(Job.id.in_(job_ids)).order_by(Job.id))) if job_ids else []
+        print("[ingest] background enrich:", enrich_and_share(db, fresh))
+
+
+def run_all(db: Session, enrich: bool = True, fresh_out: list | None = None) -> dict:
+    """Fetch every active source. enrich=False skips the AI articles and social posts (the admin button does them in the background)."""
+    report = {}
+    fresh: list[Job] = []
     for cfg in SOURCES:
         src = get_source(db, cfg)
         if not src.active:
             continue
         try:
-            report[cfg["name"]] = save_jobs(db, src, FETCHERS[cfg["type"]](cfg["endpoint"]))
+            report[cfg["name"]] = save_jobs(db, src, FETCHERS[cfg["type"]](cfg["endpoint"]), fresh)
         except Exception as exc:
             db.rollback()
             report[cfg["name"]] = {"error": str(exc)}
+    if fresh_out is not None:
+        fresh_out.extend(fresh)
+    if enrich:
+        report.update(enrich_and_share(db, fresh))
     try:
         report["expired"] = expire_stale(db)
     except Exception as exc:

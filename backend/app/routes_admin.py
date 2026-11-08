@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import Literal
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, or_, update
 from sqlalchemy.orm import Session
@@ -10,7 +10,7 @@ from .schemas import JobIn, JobFull
 from .security import require_role
 from .services import (get_require_approval, set_require_approval, apply_job_fields,
                        resolve_location, delete_jobs)
-from .ingest import run_all, SOURCES, get_source
+from .ingest import run_all, SOURCES, get_source, enrich_in_background
 from .services import notify
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(require_role("admin"))])
@@ -258,8 +258,13 @@ def write_settings(data: SettingsIn, db: Session = Depends(get_db)):
     return {"require_approval": data.require_approval}
 
 @router.post("/ingest/run")
-def ingest_now(db: Session = Depends(get_db)):
-    return run_all(db)
+def ingest_now(background: BackgroundTasks, db: Session = Depends(get_db)):
+    fresh: list = []
+    report = run_all(db, enrich=False, fresh_out=fresh)       # fast part: fetch and save
+    ids = [j.id for j in fresh]
+    background.add_task(enrich_in_background, ids)            # slow part (AI articles, social posts) runs after the response
+    report["ai"] = "articles and social posts are being created in the background"
+    return report
 
 class AIParseIn(BaseModel):
     text: str = Field(min_length=20, max_length=20000)       # pasted LinkedIn post / WhatsApp message / flyer text
