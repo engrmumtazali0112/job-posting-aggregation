@@ -246,7 +246,7 @@ a.sk-linelink:hover { background: #f3f5f8; }
 .ap-done { text-align: center; max-width: 560px; margin: 24px auto; display: grid; gap: 12px; justify-items: center; }
 
 .ms-wrap { container-type: inline-size; padding-top: 16px; }
-.ms { position: relative; display: grid; grid-template-columns: 300px 1fr; background: #fff; border: 1px solid #e3e7ec; border-radius: 16px; overflow: hidden;
+.ms { position: relative; display: grid; grid-template-columns: 260px minmax(0, 1fr); background: #fff; border: 1px solid #e3e7ec; border-radius: 16px; overflow: hidden;
   height: calc(100vh - var(--nav-h, 68px) - 110px); min-height: 520px; }
 .ms-list { border-right: 1px solid #e3e7ec; overflow-y: auto; display: flex; flex-direction: column; min-width: 0; }
 .ms-lh { padding: 18px; font-size: 22px; font-weight: 800; border-bottom: 1px solid #e3e7ec; position: sticky; top: 0; background: #fff; z-index: 1; }
@@ -262,19 +262,23 @@ a.sk-linelink:hover { background: #f3f5f8; }
 .ms-badge { align-self: center; }
 .ms-chat { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .ms-welcome { margin: auto; text-align: center; display: grid; gap: 8px; justify-items: center; color: #5b6673; padding: 24px; }
-.ms-head { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 1px solid #e3e7ec; }
+.ms-head { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 1px solid #e3e7ec; flex: none; }
 .ms-ht { display: grid; min-width: 0; flex: 1; } .ms-ht b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
 .ms-back { display: none; border: 0; background: none; font-size: 28px; line-height: 1; cursor: pointer; padding: 0 6px; }
-.ms-body { flex: 1; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 10px; background: #fafbfc; }
-.ms-msg { max-width: 75%; padding: 10px 14px; border-radius: 16px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ms-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 18px; display: flex; flex-direction: column; gap: 10px; background: #fafbfc; }
+.ms-msg { max-width: 80%; padding: 10px 14px; border-radius: 16px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: 0 1px 1px rgba(16,24,40,.06); }
 .ms-msg.me { align-self: flex-end; background: #2557a7; color: #fff; border-bottom-right-radius: 4px; }
-.ms-msg.them { align-self: flex-start; background: #eceff3; color: #1c2733; border-bottom-left-radius: 4px; }
+.ms-msg.them { align-self: flex-start; background: #fff; border: 1px solid #e3e7ec; color: #1c2733; border-bottom-left-radius: 4px; }
+.ms-msg.me .ms-time { text-align: right; }
 .ms-time { font-size: 11px; opacity: .7; margin-top: 4px; }
-.ms-compose { display: flex; gap: 10px; align-items: flex-end; padding: 12px; border-top: 1px solid #e3e7ec; }
-.ms-compose textarea { flex: 1; resize: none; border: 1px solid #d5dbe3; border-radius: 12px; padding: 10px 12px; font: inherit; }
+.ms-compose { flex: none; display: flex; flex-wrap: nowrap; gap: 10px; align-items: flex-end; padding: 12px 14px; border-top: 1px solid #e3e7ec; background: #fff; }
+.ms-compose .btn { flex: none; white-space: nowrap; height: 44px; }
+.ms-compose textarea { flex: 1 1 0; min-width: 0; width: 100%; resize: none; border: 1px solid #d5dbe3; border-radius: 12px; padding: 10px 12px; font: inherit; outline: 0; }
+.ms-compose textarea:focus { border-color: var(--p, #2557a7); box-shadow: 0 0 0 3px rgba(37,87,167,.12); }
 .ms-dwrap { display: none; }
 .ms-dwrap.show { display: block; position: absolute; top: 0; right: 0; bottom: 0; width: min(340px, 100%); z-index: 6; background: #fff; box-shadow: -10px 0 30px rgba(16,24,40,.18); overflow-y: auto; }
-.ms-details { padding: 22px 20px; display: grid; gap: 12px; align-content: start; position: relative; }
+.ms-details { padding: 22px 22px 22px 28px; display: grid; gap: 12px; align-content: start; position: relative; }
+@container (max-width: 720px) { .ms-details { padding-left: 22px; } }
 .ms-details h3 { margin: 0; font-size: 20px; padding-right: 28px; } .ms-details h4 { margin: 6px 0 0; }
 .ms-details dl { margin: 6px 0 0; display: grid; gap: 0; }
 .ms-row { padding: 10px 0; border-top: 1px solid #eef1f4; } .ms-row dt { font-weight: 700; margin-bottom: 2px; } .ms-row dd { margin: 0; color: #34404d; overflow-wrap: anywhere; }
@@ -282,8 +286,9 @@ a.sk-linelink:hover { background: #f3f5f8; }
 .ms-co { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 700; } .ms-star { color: #5b6673; font-weight: 600; }
 .ms-fulljob { display: block; text-align: center; padding: 12px; border: 1px solid #2557a7; border-radius: 10px; font-weight: 700; color: #2557a7; text-decoration: none; margin-top: 6px; }
 .ms-fulljob:hover { background: #eef4ff; }
-@container (min-width: 1000px) {
-  .ms.has-t { grid-template-columns: 290px 1fr 330px; }
+/* 3 columns: threads | chat (takes the rest) | job details (300px) */
+@container (min-width: 840px) {
+  .ms.has-t { grid-template-columns: 250px minmax(0, 1fr) 300px; }
   .ms .ms-dwrap, .ms .ms-dwrap.show { display: block; position: static; width: auto; box-shadow: none; border-left: 1px solid #e3e7ec; }
   .ms-dbtn, .ms-x { display: none; }
 }

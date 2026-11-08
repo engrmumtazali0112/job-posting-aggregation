@@ -69,9 +69,10 @@ export function Messages() {
   const [sp, setSp] = useSearchParams(); const app = sp.get('app')
   const [threads, setThreads] = useState(null); const [convo, setConvo] = useState(null)
   const [text, setText] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false)
-  const wide = () => typeof window !== 'undefined' && window.innerWidth > 900
-  const [details, setDetails] = useState(wide)          // job / company sidebar is open by default on desktop
-  const box = useRef(null)
+  const box = useRef(null); const wrapRef = useRef(null)
+  // details sidebar is shown by default only when the chat container is wide enough for 3 columns (matches the 840px CSS container query)
+  const wide = () => (wrapRef.current ? wrapRef.current.clientWidth : (typeof window !== 'undefined' ? window.innerWidth - 300 : 1000)) >= 840
+  const [details, setDetails] = useState(wide)
 
   const loadThreads = useCallback(() => api('/messages/threads').then(setThreads).catch(() => setThreads([])), [])
   const loadConvo = useCallback(() => {
@@ -103,7 +104,7 @@ export function Messages() {
   const active = !!(app && convo)
 
   return (
-    <div className="ms-wrap">
+    <div className="ms-wrap" ref={wrapRef}>
       <div className={'ms' + (active ? ' has-active has-t' : '')}>
         <div className="ms-list">
           <div className="ms-lh">Messages</div>
