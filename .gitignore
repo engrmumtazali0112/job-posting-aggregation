@@ -8,3 +8,9 @@ backend/uploads/
 
 # editor settings
 .vscode/
+backend/node_modules/
+node_modules/
+
+node_modules/
+
+node_modules/
